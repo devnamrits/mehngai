@@ -332,8 +332,34 @@ function BasketBuilder({ chainMeta }) {
                   <>One-stop at <b>{chainMeta[result.cheapest_chain]?.name}</b>:{" "}
                   <b>{fmt(result.totals[result.cheapest_chain])}</b>. Smart mix across stores:{" "}
                   <b>{fmt(result.smart_total)}</b> — you keep {fmt(result.spread)} extra in your pocket.</>
-                ) : result.note}
+                ) : (
+                  <>No single store stocks all {lines_count} lines. Smart mix — buy each line where it&apos;s{" "}
+                  <b style={{ color: "var(--up)" }}>✓ cheapest</b>:{" "}
+                  <b>{fmt(result.smart_total)}</b>
+                  {result.spread > 0 && (
+                    <> — worst-case picking costs {fmt(result.spread)} more ({result.spread_pct}%).</>
+                  )}
+                  </>
+                )}
               </div>
+
+              {!result.comparable && result.item_deal && (
+                <div className="save-banner">
+                  Biggest swap in this basket: <b>{result.item_deal.item}</b> —{" "}
+                  <b>{fmt(result.item_deal.low_price)}</b> at{" "}
+                  <span style={{ color: chainMeta[result.item_deal.buy_at.slug]?.accent }}>
+                    {chainMeta[result.item_deal.buy_at.slug]?.name}
+                  </span>{" "}
+                  vs {fmt(result.item_deal.high_price)} at {chainMeta[result.item_deal.avoid.slug]?.name}{" "}
+                  ({result.item_deal.gap_pct}% less).
+                </div>
+              )}
+
+              {result.note && (
+                <div className="save-banner" style={{ background: "var(--panel-2)" }}>
+                  Note: {result.note}
+                </div>
+              )}
             </>
           )}
         </>
