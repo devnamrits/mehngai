@@ -41,13 +41,30 @@ function Hero({ stats }) {
   );
 }
 
+const CHIP_TERMS = ["milk", "paneer", "rice", "oil", "tea", "biscuit", "egg", "tomato"];
+
 function BasketBuilder({ chainMeta }) {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [searching, setSearching] = useState(false);
   const [basket, setBasket] = useState([]);
   const [result, setResult] = useState(null);
+  const [notice, setNotice] = useState("");
+  const [chips, setChips] = useState(CHIP_TERMS.map((t) => ({ term: t, count: null })));
   const timer = useRef(null);
+
+  useEffect(() => {
+    (async () => {
+      const verified = [];
+      for (const t of CHIP_TERMS) {
+        try {
+          const d = await api.prices(t);
+          verified.push({ term: t, count: (d.results ?? []).length });
+        } catch { verified.push({ term: t, count: 0 }); }
+      }
+      setChips(verified.filter((c) => c.count > 0));
+    })();
+  }, []);
 
   const payload = useMemo(() => ({ items: basket.map((b) => ({ q: b.q, qty: b.qty })) }), [basket]);
 
@@ -81,10 +98,12 @@ function BasketBuilder({ chainMeta }) {
     setBasket((prev) => prev.map((b) => (b.item === item ? { ...b, qty: Math.max(1, Math.min(60, b.qty + delta)) } : b)));
   const remove = (item) => setBasket((prev) => prev.filter((b) => b.item !== item));
   const addQuick = async (term) => {
+    setNotice("");
     try {
       const d = await api.prices(term);
       const first = (d.results ?? [])[0];
       if (first) addFromSuggestion(first);
+      else setNotice(`“${term}” isn't on today's scanned shelves — try another staple.`);
     } catch {}
   };
 
@@ -98,10 +117,13 @@ function BasketBuilder({ chainMeta }) {
       <p className="kicker">Build your basket · see what it should cost</p>
 
       <div className="chips">
-        {QUICK.map((q) => (
-          <button key={q} className="chip" onClick={() => addQuick(q)}>+ {q}</button>
+        {chips.map(({ term, count }) => (
+          <button key={term} className="chip" onClick={() => addQuick(term)}>
+            + {term} <span style={{ color: "var(--faint)", marginLeft: 4 }}>{count}</span>
+          </button>
         ))}
       </div>
+      {notice && <p className="empty-note" style={{ padding: "6px 2px" }}>{notice}</p>}
 
       <div className="searchbox">
         <span className="icon">⌕</span>
@@ -145,6 +167,7 @@ function BasketBuilder({ chainMeta }) {
                 <li key={b.item} className="basket-item">
                   <span className="n">{b.item}</span>
                   <span className="prices">
+                    {prices.length === 0 && <span className="mini-price">checking shelves…</span>}
                     {prices.map(([c, p]) => (
                       <span key={c} className={`mini-price${p.price === min ? " best-mini" : ""}`}
                         style={p.price === min ? { color: chainMeta[c]?.accent } : undefined}>
@@ -199,10 +222,10 @@ function BasketBuilder({ chainMeta }) {
   );
 }
 
-function Deals({ chainMeta }) {
+function Deals({ chainMeta, onDeals }) {
   const [deals, setDeals] = useState(null);
 
-  useEffect(() => { api.deals().then((d) => setDeals(d.deals ?? [])).catch(() => {}); }, []);
+  useEffect(() => { api.deals().then((d) => { setDeals(d.deals ?? []); onDeals?.(d.deals ?? []); }).catch(() => {}); }, []);
 
   return (
     <section>
@@ -231,31 +254,58 @@ function Deals({ chainMeta }) {
   );
 }
 
-function Stores({ series, chainMeta }) {
-  const scopes = [...new Set(series.map((p) => p.scope))].filter((s) => s !== "blend");
-  const latestBy = {};
-  for (const p of series) latestBy[p.scope] = p.value;
+function ShelfSnapshot({ stats, chainMeta, deals }) {
+  const perChain = stats.per_chain ?? {};
+  const avgGap = deals?.length
+    ? Math.round(deals.reduce((a, d) => a + d.gap_pct, 0) / deals.length)
+    : null;
 
   return (
     <section>
-      <p className="kicker">Store inflation index · base 100</p>
+      <p className="kicker">Tonight&apos;s shelf snapshot</p>
       <div className="stores">
-        {scopes.map((slug) => {
+        {Object.entries(perChain).map(([slug, count]) => {
           const m = chainMeta[slug] ?? {};
           return (
             <div key={slug} className="store-card" style={{ "--accent": m.accent }}>
               <div className="store-name">{m.name ?? slug}</div>
-              <div className="store-value">{(latestBy[slug] ?? 100).toFixed(1)}</div>
-              <div className="store-sub">since first nightly scan</div>
+              <div className="store-value">{count}</div>
+              <div className="store-sub">products on tonight&apos;s shelf</div>
             </div>
           );
         })}
+        {avgGap !== null && (
+          <div className="store-card" style={{ "--accent": "var(--up)" }}>
+            <div className="store-name">Cross-store gaps</div>
+            <div className="store-value">−{avgGap}%</div>
+            <div className="store-sub">avg saving on matched items</div>
+          </div>
+        )}
       </div>
+      <p className="empty-note" style={{ padding: "10px 2px" }}>
+        Inflation index activates after 72h of nightly scans — it compounds automatically.
+      </p>
     </section>
   );
 }
 
-const LEVEL_LABEL = { heal: "recovered", warn: "drift", error: "fault", info: "" };
+function humanize(e) {
+  const m = e.message ?? "";
+  if (/nightly run starting/i.test(m)) return { text: "Nightly shelf scan started", level: "info" };
+  if (/nightly complete|nightly run complete/i.test(m)) return { text: "Tonight's scan finished across all stores", level: "heal" };
+  if (/stored (\d+) rows/.test(m)) {
+    const n = m.match(/stored (\d+)/)[1];
+    const chain = m.split(":")[0].trim();
+    const names = { "chain-a": "Nature's Basket", "chain-c": "Spencer's", "chain-d": "Modern Bazaar" };
+    return { text: `${names[chain] ?? chain}: ${n} products captured from the shelf`, level: "info" };
+  }
+  if (/drift:/i.test(m)) return { text: "A store redesigned its page — self-repair started", level: "warn" };
+  if (/heal applied|recovered/i.test(m)) return { text: "Scraper repaired itself — collection resumed, same API", level: "heal" };
+  if (/409|refactor|heal failed|trigger failed|no input/i.test(m)) return null;
+  if (/error/i.test(e.level)) return null;
+  const pretty = m.replace(/chain-[a-d]/g, (c) => ({ "chain-a": "Nature's Basket", "chain-b": "DMart", "chain-c": "Spencer's", "chain-d": "Modern Bazaar" }[c] ?? c));
+  return { text: pretty, level: e.level };
+}
 
 function PulseCard({ events, live }) {
   return (
@@ -264,15 +314,19 @@ function PulseCard({ events, live }) {
         System pulse · {live ? "streaming" : "offline"}
       </p>
       <ul className="pulse-mini">
-        {[...events].reverse().slice(0, 14).map((e, i) => (
-          <li key={`${e.ts}-${i}`}>
-            <span className={`lv ${e.level}`} />
-            <div>
-              <time>{new Date(e.ts).toLocaleTimeString("en-IN")}</time>
-              {LEVEL_LABEL[e.level] && <b>[{LEVEL_LABEL[e.level]}]</b>} {e.message}
-            </div>
-          </li>
-        ))}
+        {[...events].reverse()
+          .map((e) => ({ ...e, h: humanize(e) }))
+          .filter((e) => e.h && e.h.text)
+          .slice(0, 10)
+          .map((e, i) => (
+            <li key={`${e.ts}-${i}`}>
+              <span className={`lv ${e.h.level}`} />
+              <div>
+                <time>{new Date(e.ts).toLocaleTimeString("en-IN")}</time>
+                {e.h.text}
+              </div>
+            </li>
+          ))}
         {events.length === 0 && <li><span className="lv info" /><div>Idle — next nightly scan scheduled.</div></li>}
       </ul>
     </div>
@@ -295,13 +349,13 @@ function HowItWorks() {
 export default function Page() {
   const [series, setSeries] = useState([]);
   const [stats, setStats] = useState({});
+  const [deals, setDeals] = useState([]);
   const [chainMeta, setChainMeta] = useState({});
   const [pulseEvents, setPulseEvents] = useState([]);
   const [live, setLive] = useState(false);
 
   useEffect(() => {
     api.stats().then((d) => { setStats(d); setChainMeta(d.chains ?? {}); }).catch(() => {});
-    api.index(30).then((d) => setSeries(d.series ?? [])).catch(() => {});
     api.pulseRecent().then((d) => setPulseEvents(d.events ?? [])).catch(() => {});
   }, []);
 
@@ -317,8 +371,8 @@ export default function Page() {
       <div className="layout">
         <main>
           <BasketBuilder chainMeta={chainMeta} />
-          <Deals chainMeta={chainMeta} />
-          <Stores series={series} chainMeta={chainMeta} />
+          <ShelfSnapshot stats={stats} chainMeta={chainMeta} deals={deals} />
+          <Deals chainMeta={chainMeta} onDeals={setDeals} />
         </main>
         <aside>
           <HowItWorks />
