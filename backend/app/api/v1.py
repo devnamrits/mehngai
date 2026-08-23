@@ -265,6 +265,12 @@ def basket(payload: dict, db=Depends(get_db)):
             "add more everyday staples to unlock cross-store picks."
         )
 
+    # multi-store items first — comparisons lead the view
+    resolved.sort(key=lambda e: (
+        -len(e.get("prices", {})) if e.get("found") else -1,
+        e.get("item", ""),
+    ))
+
     item_deal = None
     for entry in resolved:
         if not entry.get("found"):
