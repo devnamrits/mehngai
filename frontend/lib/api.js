@@ -21,6 +21,7 @@ export const api = {
   pulseRecent: () => get("/api/v1/pulse/recent"),
   stats: () => get("/api/v1/stats"),
   movements: () => get("/api/v1/movements"),
+  inflation: () => get("/api/v1/inflation"),
   deals: () => get("/api/v1/deals"),
 };
 

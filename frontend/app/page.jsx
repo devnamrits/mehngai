@@ -407,7 +407,54 @@ function PulseCard({ events, live, chainMeta }) {
   );
 }
 
-function MovementsCard() {
+function InflationCard() {
+  const [d, setD] = useState(null);
+
+  useEffect(() => { api.inflation().then(setD).catch(() => {}); }, []);
+
+  return (
+    <div className="rail-card" style={{ borderTop: "3px solid var(--saffron)" }}>
+      <p className="kicker">The mehngai number · month over month</p>
+      {!d && <div className="empty-note" style={{ padding: 0 }}>Reading the ledger…</div>}
+      {d?.status === "live" && (
+        <>
+          <div className="infl-num" style={{ color: d.basket_change_pct > 0 ? "var(--down)" : "var(--up)" }}>
+            {d.basket_change_pct > 0 ? "+" : ""}{d.basket_change_pct}%
+          </div>
+          <div className="infl-sub">
+            shelf prices vs {d.baseline_day} · {d.items_compared} items compared
+          </div>
+          <ul className="move-list" style={{ marginTop: 12 }}>
+            {(d.top_movers ?? []).slice(0, 4).map((m) => (
+              <li key={m.item}>
+                <span className="m-name">{m.item}</span>
+                <span className="m-delta" style={{ color: m.delta_pct > 0 ? "var(--down)" : "var(--up)" }}>
+                  {m.delta_pct > 0 ? "+" : ""}{m.delta_pct}%
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {d?.status === "collecting" && (
+        <>
+          <div className="infl-num" style={{ color: "var(--muted)" }}>Day {d.scan_days}</div>
+          <div className="infl-sub">
+            Baseline captured on {d.latest_day}. The nightly scan compounds this into a
+            month-over-month number automatically.
+          </div>
+          <div className="daybar">
+            {[...Array(d.days_required)].map((_, i) => (
+              <i key={i} style={{ background: i < d.scan_days ? "var(--saffron)" : "var(--line)" }} />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function MovementsCard() { {
   const [data, setData] = useState(null);
 
   useEffect(() => {
@@ -487,6 +534,7 @@ export default function Page() {
           <Deals chainMeta={chainMeta} onDeals={setDeals} onChains={mergeChains} />
         </main>
         <aside>
+          <InflationCard />
           <MovementsCard />
           <HowItWorks />
           <PulseCard events={pulseEvents} live={live} chainMeta={chainMeta} />

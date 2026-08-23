@@ -265,3 +265,8 @@ table.matrix { table-layout: fixed; width: 100%; border-collapse: collapse; }
 .m-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .m-store { color: var(--faint); font-size: 11px; }
 .m-delta { font-family: var(--mono); font-weight: 600; }
+
+.infl-num { font-family: var(--serif); font-size: 46px; font-weight: 400; line-height: 1.05; }
+.infl-sub { color: var(--muted); font-size: 13px; margin-top: 6px; }
+.daybar { display: flex; gap: 6px; margin-top: 12px; }
+.daybar i { height: 6px; flex: 1; border-radius: 3px; background: var(--line); }

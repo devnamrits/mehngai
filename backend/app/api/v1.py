@@ -3,7 +3,7 @@ import threading
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sse_starlette.sse import EventSourceResponse
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
 
 from app.api.deps import (
     get_db,
@@ -287,6 +287,75 @@ def basket(payload: dict, db=Depends(get_db)):
         "monthly_note": "estimates use today's shelf prices × your quantity",
         "chains": _chain_meta_map(),
     }
+
+
+@router.get("/inflation")
+def inflation(db=Depends(get_db)):
+    """Month-over-month mehngai, computed exactly like a chained index —
+    activates once ≥2 scan dates exist; reports progress until then."""
+    meta = _chain_meta_map()
+    days = [r[0] for r in db.execute(
+        text("SELECT DISTINCT date(collected_at) AS d FROM observations ORDER BY d")
+    ).all()]
+    if len(days) < 2:
+        return {
+            "status": "collecting",
+            "scan_days": len(days),
+            "days_required": 2,
+            "latest_day": days[-1] if days else None,
+            "message": "Baseline captured. Tomorrow's nightly scan unlocks month-over-month.",
+        }
+
+    baseline_day, latest_day = days[0], days[-1]
+    base_rows = _median_unit_by_item(db, baseline_day)
+    curr_rows = _median_unit_by_item(db, latest_day)
+    common = set(base_rows) & set(curr_rows)
+    if not common:
+        return {"status": "collecting", "scan_days": len(days), "days_required": 2,
+                "message": "Catalogs between the two scans don't overlap yet."}
+
+    deltas = []
+    for gid in common:
+        b, c = base_rows[gid], curr_rows[gid]
+        if b > 0:
+            deltas.append((gid, (c - b) / b * 100))
+    avg_change = round(sum(d for _, d in deltas) / len(deltas), 2)
+    up = sum(1 for _, d in deltas if d > 0)
+    movers = sorted(deltas, key=lambda x: abs(x[1]), reverse=True)[:8]
+
+    id_to_name = dict(db.execute(text("SELECT id, canonical_name FROM items")).all())
+    meta_map = meta
+    return {
+        "status": "live",
+        "baseline_day": baseline_day,
+        "latest_day": latest_day,
+        "items_compared": len(deltas),
+        "basket_change_pct": avg_change,
+        "up_count": up,
+        "down_count": len(deltas) - up,
+        "top_movers": [
+            {"item": id_to_name.get(gid_, ""), "delta_pct": round(dpct, 1)}
+            for gid_, dpct in movers
+        ],
+        "chains": meta_map,
+    }
+
+
+def _median_unit_by_item(db, day):
+    rows = db.execute(
+        text("""SELECT o.canonical_id, o.unit_price FROM observations o
+                WHERE date(o.collected_at)=:d AND o.unit_price IS NOT NULL AND o.unit_price>0"""),
+        {"d": day},
+    ).all()
+    by_item: dict = {}
+    for cid, up in rows:
+        by_item.setdefault(cid, []).append(up)
+    out = {}
+    for cid, vals in by_item.items():
+        vals.sort()
+        mid = len(vals) // 2
+        out[cid] = vals[mid] if len(vals) % 2 else (vals[mid - 1] + vals[mid]) / 2
+    return out
 
 
 @router.get("/movements")
