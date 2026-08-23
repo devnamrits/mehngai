@@ -20,6 +20,7 @@ export const api = {
   briefing: () => get("/api/v1/insights/daily"),
   pulseRecent: () => get("/api/v1/pulse/recent"),
   stats: () => get("/api/v1/stats"),
+  movements: () => get("/api/v1/movements"),
   deals: () => get("/api/v1/deals"),
 };
 

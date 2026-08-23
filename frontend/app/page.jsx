@@ -127,7 +127,7 @@ function BasketBuilder({ chainMeta, onChains }) {
       {notice && <p className="empty-note" style={{ padding: "6px 2px" }}>{notice}</p>}
 
       <div className="searchbox">
-        <span className="icon">⌕</span>
+        <span className="icon">/</span>
         <input
           placeholder="Search a product — try “ghee” or “olive oil”"
           value={query}
@@ -192,6 +192,13 @@ function BasketBuilder({ chainMeta, onChains }) {
                     Store-by-store · your basket on every shelf
                   </p>
                   <table className="matrix">
+                    <colgroup>
+                      <col style={{ width: "34%" }} />
+                      <col />
+                      <col />
+                      <col />
+                      <col />
+                    </colgroup>
                     <thead>
                       <tr>
                         <th>Item</th>
@@ -246,10 +253,10 @@ function BasketBuilder({ chainMeta, onChains }) {
 
                   <div className="takeaway">
                     {result.comparable && result.cheapest_chain ? (
-                      <>🏆 <b>{result.chains[result.cheapest_chain]?.name}</b> stocks all {lines.length} items
+                      <><b>{result.chains[result.cheapest_chain]?.name}</b> stocks all {lines.length} items
                       for <b>{fmt(result.totals[result.cheapest_chain])}</b> — the simplest single-store run.</>
                     ) : (
-                      <>🧠 No single store stocks all {lines.length}. Smart mix — buy each line at its ✓ —{" "}
+                      <>No single store stocks all {lines.length}. Smart mix — buy each line at its ✓ —{" "}
                       costs <b>{fmt(result.smart_total)}</b>{result.spread > 0 && (
                         <> vs {fmt(result.smart_total + result.spread)} at worst</>
                       )}.</>
@@ -258,7 +265,7 @@ function BasketBuilder({ chainMeta, onChains }) {
 
                   {!result.comparable && result.item_deal && (
                     <div className="save-banner">
-                      🎯 Biggest single swap: <b>{result.item_deal.item}</b> at{" "}
+                      Biggest single swap: <b>{result.item_deal.item}</b> at{" "}
                       <b style={{ color: chainMeta[result.item_deal.buy_at.slug]?.accent }}>
                         {chainMeta[result.item_deal.buy_at.slug]?.name} {fmt(result.item_deal.low_price)}
                       </b>{" "}
@@ -267,7 +274,7 @@ function BasketBuilder({ chainMeta, onChains }) {
                     </div>
                   )}
                   {result.note && (
-                    <div className="save-banner" style={{ background: "var(--panel-2)" }}>ℹ️ {result.note}</div>
+                    <div className="save-banner" style={{ background: "var(--panel-2)" }}>{result.note}</div>
                   )}
                 </>
               );
@@ -400,6 +407,43 @@ function PulseCard({ events, live, chainMeta }) {
   );
 }
 
+function MovementsCard() {
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    api.movements().then(setData).catch(() => {});
+  }, []);
+
+  const sum = data?.summary;
+  return (
+    <div className="rail-card">
+      <p className="kicker">Mehngai meter · live price moves</p>
+      {sum && (
+        <p style={{ margin: "0 0 10px", fontSize: "13.5px", color: "var(--muted)" }}>
+          Since first scan today:{" "}
+          <b style={{ color: "var(--down)" }}>{sum.up} up</b> ·{" "}
+          <b style={{ color: "var(--up)" }}>{sum.down} down</b> across the shelf.
+        </p>
+      )}
+      <ul className="move-list">
+        {(data?.movements ?? []).slice(0, 6).map((mv) => (
+          <li key={mv.item + mv.store}>
+            <span className="m-name">{mv.item}</span>
+            <span className="m-store">{mv.store}</span>
+            <span className="m-delta" style={{ color: mv.delta_pct > 0 ? "var(--down)" : "var(--up)" }}>
+              {mv.delta_pct > 0 ? "+" : ""}{mv.delta_pct}%
+            </span>
+          </li>
+        ))}
+        {!data && <li style={{ color: "var(--faint)" }}>Reading the ledger…</li>}
+        {data && (data.movements ?? []).length === 0 && (
+          <li style={{ color: "var(--faint)" }}>Shelves steady — no moves recorded yet.</li>
+        )}
+      </ul>
+    </div>
+  );
+}
+
 function HowItWorks() {
   return (
     <div className="rail-card">
@@ -443,6 +487,7 @@ export default function Page() {
           <Deals chainMeta={chainMeta} onDeals={setDeals} onChains={mergeChains} />
         </main>
         <aside>
+          <MovementsCard />
           <HowItWorks />
           <PulseCard events={pulseEvents} live={live} chainMeta={chainMeta} />
         </aside>

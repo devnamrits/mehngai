@@ -289,6 +289,83 @@ def basket(payload: dict, db=Depends(get_db)):
     }
 
 
+@router.get("/movements")
+def movements(db=Depends(get_db)):
+    """Real price movements between our own collection runs — earliest vs latest."""
+    meta = _chain_meta_map()
+    cutoff = _fresh_cutoff()
+    rows = db.execute(
+        select(
+            Observation.canonical_id,
+            Item.canonical_name,
+            Run.chain,
+            Observation.price,
+            Observation.unit_price,
+            Observation.unit_label,
+            Observation.pack_size,
+            Observation.collected_at,
+        )
+        .join(Item, Item.id == Observation.canonical_id)
+        .join(Run, Run.id == Observation.run_id)
+        .where(
+            Observation.collected_at >= cutoff,
+            Observation.canonical_id.is_not(None),
+        )
+        .order_by(Observation.collected_at.asc())
+        .limit(5000)
+    ).all()
+
+    series: dict[tuple, dict] = {}
+    names: dict[int, str] = {}
+    for cid, cname, chain, price, up, label, pack, ts in rows:
+        key = (cid, chain)
+        names[cid] = cname
+        entry = {
+            "price": float(price) if price else None,
+            "unit": float(up) if (up and up > 0) else None,
+            "label": label or "",
+            "pack": pack or "",
+            "ts": ts,
+        }
+        series.setdefault(key, []).append(entry)
+
+    out = []
+    for (cid, chain), pts in series.items():
+        if len(pts) < 2:
+            continue
+        first, last = pts[0], pts[-1]
+
+        if first["unit"] and last["unit"]:
+            v0, v1, basis = first["unit"], last["unit"], first["label"] or "per unit"
+        elif first["pack"] and first["pack"].lower().replace(" ", "") == last["pack"].lower().replace(" ", "") and first["price"] and last["price"]:
+            v0, v1, basis = first["price"], last["price"], f"per {first['pack']}"
+        else:
+            continue
+
+        if v0 <= 0 or v1 <= 0 or v0 == v1:
+            continue
+        delta_pct = round((v1 - v0) / v0 * 100, 1)
+        if abs(delta_pct) > 60:
+            continue  # almost certainly a listing change, not a repricing
+        out.append({
+            "item": names[cid],
+            "store": meta.get(chain, {}).get("name", chain),
+            "first": round(v0, 2),
+            "latest": round(v1, 2),
+            "basis": basis,
+            "delta_pct": delta_pct,
+            "readings": len(pts),
+        })
+    out.sort(key=lambda d: abs(d["delta_pct"]), reverse=True)
+    moved_up = sum(1 for d in out if d["delta_pct"] > 0)
+    moved_down = len(out) - moved_up
+    return {
+        "movements": out[:12],
+        "summary": {"moved": len(out), "up": moved_up, "down": moved_down},
+        "chains": meta,
+    }
+
+
 @router.get("/deals")
 def deals(db=Depends(get_db)):
     """Same product, multiple stores — biggest percentage gaps first."""

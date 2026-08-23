@@ -253,3 +253,15 @@ table.matrix { width: 100%; border-collapse: collapse; }
   background: var(--saffron-soft); border-radius: 10px;
   font-size: 14.5px; line-height: 1.6;
 }
+
+/* ---------- fixed matrix grid ---------- */
+table.matrix { table-layout: fixed; width: 100%; border-collapse: collapse; }
+.matrix col.c-item { width: 34%; }
+.matrix th, .matrix td { text-align: right; padding-right: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.matrix th:first-child, .matrix td:first-child { text-align: left; padding-left: 2px; }
+
+.move-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.move-list li { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
+.m-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-store { color: var(--faint); font-size: 11px; }
+.m-delta { font-family: var(--mono); font-weight: 600; }
