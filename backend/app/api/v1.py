@@ -196,14 +196,34 @@ def basket(payload: dict, db=Depends(get_db)):
     cheapest = min(comparable, key=totals.get) if comparable else None
     priciest = max(comparable, key=totals.get) if comparable else None
 
+    smart_total = 0.0
+    worst_total = 0.0
+    multi_store_lines = 0
+    for entry in resolved:
+        if not entry.get("found"):
+            continue
+        prices = [v["price"] for v in entry["prices"].values() if v["price"]]
+        if not prices:
+            continue
+        qty = entry["qty"]
+        smart_total += min(prices) * qty
+        if len(prices) > 1:
+            multi_store_lines += 1
+            worst_total += max(prices) * qty
+        else:
+            worst_total += min(prices) * qty
+    smart_total = round(smart_total, 2)
+    spread = round(worst_total - smart_total, 2)
+    spread_pct = round(spread / worst_total * 100, 1) if worst_total else 0
+
     note = None
     if not totals:
         note = "None of these items are on today's scanned shelves — try different staples."
-    elif not comparable:
-        solo = next(iter(totals))
+    elif multi_store_lines == 0:
+        solo = max(totals, key=totals.get)
         note = (
-            f"Only {_chain_meta_map().get(solo, {}).get('name', solo)} stocks all of these items "
-            "today — add another everyday staple to unlock a store-vs-store comparison."
+            f"Everything you picked is cheapest at {_chain_meta_map().get(solo, {}).get('name', solo)} — "
+            "add more everyday staples to unlock cross-store picks."
         )
 
     item_deal = None
@@ -233,6 +253,10 @@ def basket(payload: dict, db=Depends(get_db)):
         "item_deal": item_deal,
         "coverage": covered,
         "comparable": bool(comparable),
+        "smart_total": smart_total,
+        "spread": spread,
+        "spread_pct": spread_pct,
+        "multi_store_lines": multi_store_lines,
         "cheapest_chain": cheapest,
         "priciest_chain": priciest,
         "savings": round((totals[priciest] - totals[cheapest]) * (100 / totals[priciest]), 1)

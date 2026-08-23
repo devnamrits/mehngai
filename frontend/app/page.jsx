@@ -191,6 +191,18 @@ function BasketBuilder({ chainMeta, onChains }) {
           </ul>
 
           <div className={`verdict${result ? "" : " dim"}`}>
+            {result?.smart_total !== undefined && (
+              <div className="smart-head">
+                <span className="kicker" style={{ marginBottom: 0 }}>Smart cart · each item at its cheapest store</span>
+                <div className="smart-num">{fmt(result.smart_total)}</div>
+                {result.spread > 0 && (
+                  <div className="smart-sub">
+                    Picking wrong on {result.multi_store_lines} item{result.multi_store_lines > 1 ? "s" : ""} could cost{" "}
+                    <b>+{fmt(result.spread)}</b> ({result.spread_pct}%)
+                  </div>
+                )}
+              </div>
+            )}
             <div className="verdict-rows">
               {sorted.map(([slug, total]) => {
                 const m = chainMeta[slug] ?? {};
@@ -207,9 +219,8 @@ function BasketBuilder({ chainMeta, onChains }) {
             </div>
             {result?.comparable && savingsPct > 0 && cheapest && sorted.length > 1 && (
               <div className="save-banner">
-                🛒 Same basket, both stores: order from <b>{chainMeta[cheapest]?.name}</b> and keep{" "}
-                <b>{fmt(totals[sorted.at(-1)?.[0]] - totals[cheapest])}</b> ({savingsPct}%)
-                vs {chainMeta[sorted.at(-1)?.[0]]?.name}.
+                🛒 One-stop shopping at <b>{chainMeta[cheapest]?.name}</b>? That&apos;s{" "}
+                <b>{fmt(totals[cheapest])}</b> — {savingsPct}% pricier than mixing stores smartly.
               </div>
             )}
             {!result?.comparable && result?.item_deal && (

@@ -221,3 +221,11 @@ section { margin-bottom: 26px; }
   .deal-card { grid-template-columns: 1fr; }
   .gap-pill { grid-row: auto; justify-self: start; }
 }
+
+.smart-head { padding: 16px 18px 6px; }
+.smart-num {
+  font-family: var(--serif); font-weight: 400; font-size: 44px; line-height: 1.1;
+  color: var(--up);
+}
+.smart-sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.smart-sub b { color: var(--down); font-family: var(--mono); }
