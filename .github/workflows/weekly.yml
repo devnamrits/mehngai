@@ -1,8 +1,8 @@
-name: nightly-collection
+name: weekly-collection
 
 on:
   schedule:
-    - cron: "30 21 * * *" # 03:00 IST daily
+    - cron: "30 21 * * 1" # Mondays 03:00 IST — weekly true-price scan (skips discount noise)
   workflow_dispatch: {}
 
 jobs:
