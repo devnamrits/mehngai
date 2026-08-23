@@ -9,9 +9,13 @@ from app.domain.models import Base
 
 _settings = get_settings()
 
-_connect_args = {"check_same_thread": False} if _settings.database_url.startswith("sqlite") else {}
+_db_url = _settings.database_url
+if _db_url.startswith("postgresql://"):
+    _db_url = _db_url.replace("postgresql://", "postgresql+psycopg://", 1)
 
-engine = create_engine(_settings.database_url, pool_pre_ping=True, connect_args=_connect_args)
+_connect_args = {"check_same_thread": False} if _db_url.startswith("sqlite") else {}
+
+engine = create_engine(_db_url, pool_pre_ping=True, connect_args=_connect_args)
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
