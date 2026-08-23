@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, fmt, openPulseStream } from "../lib/api";
 
-const QUICK = ["milk", "atta", "rice", "oil", "tea", "salt", "shampoo", "biscuit"];
+const QUICK = ["milk", "paneer", "rice", "oil", "tea", "biscuit", "egg", "tomato"];
 
 function Masthead({ live }) {
   return (

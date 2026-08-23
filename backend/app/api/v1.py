@@ -34,7 +34,7 @@ def health(db=Depends(get_db)):
 def _chain_meta_map() -> dict:
     settings = get_settings()
     overrides = parse_chain_names(settings.chain_names)
-    return {slug: chain_meta(slug, overrides) for slug in ("chain-a", "chain-b", "chain-c")}
+    return {slug: chain_meta(slug, overrides) for slug in ("chain-a", "chain-b", "chain-c", "chain-d")}
 
 
 @router.get("/chains")
