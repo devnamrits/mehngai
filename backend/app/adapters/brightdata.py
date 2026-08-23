@@ -60,9 +60,7 @@ class BrightDataAdapter(ScraperStudioPort):
 
     def _trigger(self, collector_id: str, url: str | None) -> str:
         params = {"collector": collector_id}
-        payload = []
-        if url:
-            payload.append({"url": url})
+        payload = [{"url": u.strip()} for u in url.split(",") if u.strip()] if url else []
         response = self._client.post(
             f"{self._settings.brightdata_api_base}/dca/trigger",
             params=params,

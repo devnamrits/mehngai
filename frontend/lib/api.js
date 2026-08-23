@@ -19,6 +19,8 @@ export const api = {
   movers: (windowDays = 7) => get(`/api/v1/movers?window_days=${windowDays}`),
   briefing: () => get("/api/v1/insights/daily"),
   pulseRecent: () => get("/api/v1/pulse/recent"),
+  stats: () => get("/api/v1/stats"),
+  deals: () => get("/api/v1/deals"),
 };
 
 export function openPulseStream(onEvent, onStatus) {

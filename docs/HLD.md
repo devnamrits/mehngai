@@ -127,8 +127,12 @@ Unit price = `price / pack_base` where pack base normalizes kg/g → grams, L/ml
 |---|---|---|---|
 | GET | `/api/v1/health` | – | liveness + db check |
 | GET | `/api/v1/index?days=30&scope=` | – | index series + latest value |
-| GET | `/api/v1/prices?q=milk` | – | fuzzy item match → cross-chain grid + sparklines |
-| GET | `/api/v1/movers?window=7d` | – | Wall of Shame data |
+| GET | `/api/v1/prices?q=milk` | – | fuzzy item match → cross-chain grid |
+| POST | `/api/v1/basket` | – | livelihood calculator: items+qty → per-store totals, cheapest store, savings % |
+| GET | `/api/v1/deals` | – | Smarter Pick Radar: identical products at ≥2 stores ranked by price gap |
+| GET | `/api/v1/stats` | – | catalog size, observations, per-chain coverage |
+| GET | `/api/v1/chains` | – | retailer identities (names, accents) |
+| GET | `/api/v1/movers?window=7d` | – | fastest-rising stores over window |
 | GET | `/api/v1/pulse/stream` | – | SSE live watchdog feed (+ recent replay) |
 | POST | `/api/v1/pipeline/run` | bearer | orchestrates nightly run synchronously (CI caller) |
 

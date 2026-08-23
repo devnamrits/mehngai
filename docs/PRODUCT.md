@@ -61,3 +61,33 @@ AI-generated summary built strictly from verified facts (index levels, deltas, m
 | Movers + explorer | Impact — usable daily by real people |
 | Pulse rail + incident receipts | Reliability & self-healing (the sponsor's core ask) |
 | Blended vs per-chain split | Creativity — macro lens + micro lens |
+
+
+## The product surface (final)
+
+### Your Monthly Basket (the hero)
+Search or tap category chips → items land in your basket with quantity steppers.
+Mehngai prices the whole list at every store using tonight's real shelves and
+renders a verdict: per-store totals, the winner, and the exact rupees saved by
+ordering from the right place.
+
+### Smarter Pick Radar
+Finds the *same* product stocked at multiple stores and ranks the biggest
+percentage gaps — "tomato: ₹27.50 at Nature's Basket vs ₹100 at Spencer's,
+pay 72% less." Every card is a receipt-backed comparison.
+
+### Store inflation index
+Chained base-100 index per retailer (and blended), compounding nightly as the
+cron fires — the macro lens over the micro comparisons.
+
+### System pulse
+The watchdog's public diary: collection events, drift detections, autonomous
+heals. Reliability is streamed into the product instead of being claimed in a slide.
+
+## UX principles applied
+
+- **One primary job per screen** — basket building dominates; everything else supports it.
+- **Recognition over recall** — category chips (`+ milk`, `+ atta`) before typing.
+- **Immediate feedback** — debounced suggestions, live totals on every quantity change.
+- **Honest empty states** — if data isn't there yet, we say so; we never invent numbers.
+- **Retailer identity** — real names and brand accents everywhere; no anonymous chain-a/b labels.

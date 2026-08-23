@@ -173,6 +173,68 @@ def basket(payload: dict, db=Depends(get_db)):
     }
 
 
+@router.get("/deals")
+def deals(db=Depends(get_db)):
+    """Same product, multiple stores — biggest percentage gaps first."""
+    meta = _chain_meta_map()
+    rows = db.execute(
+        select(Observation.canonical_id, Item.canonical_name, Run.chain, Observation.price)
+        .join(Item, Item.id == Observation.canonical_id)
+        .join(Run, Run.id == Observation.run_id)
+        .where(Observation.price.is_not(None), Observation.price > 0)
+        .order_by(Observation.collected_at.desc())
+        .limit(2000)
+    ).all()
+
+    latest: dict[int, dict[str, float]] = {}
+    names: dict[int, str] = {}
+    for cid, cname, chain, price in rows:
+        names[cid] = cname
+        bucket = latest.setdefault(cid, {})
+        if chain not in bucket:
+            bucket[chain] = price
+
+    deals_out = []
+    for cid, prices_by_chain in latest.items():
+        if len(prices_by_chain) < 2:
+            continue
+        lo_chain = min(prices_by_chain, key=prices_by_chain.get)
+        hi_chain = max(prices_by_chain, key=prices_by_chain.get)
+        lo, hi = prices_by_chain[lo_chain], prices_by_chain[hi_chain]
+        gap_pct = round((hi - lo) / hi * 100, 1)
+        if gap_pct >= 3 and hi >= 30:
+            deals_out.append({
+                "item": names[cid],
+                "buy_at": {"slug": lo_chain, **meta.get(lo_chain, {})},
+                "avoid": {"slug": hi_chain, **meta.get(hi_chain, {})},
+                "low_price": lo,
+                "high_price": hi,
+                "gap_pct": gap_pct,
+                "you_save": round(hi - lo, 2),
+            })
+    deals_out.sort(key=lambda d: d["gap_pct"], reverse=True)
+    return {"deals": deals_out[:12], "chains": meta}
+
+
+@router.get("/stats")
+def stats(db=Depends(get_db)):
+    products = db.scalar(
+        select(func.count(func.distinct(Observation.canonical_id))).where(Observation.canonical_id.is_not(None))
+    ) or 0
+    obs_count = db.scalar(select(func.count()).select_from(Observation)) or 0
+    chain_rows = db.execute(
+        select(Run.chain, func.count(func.distinct(Observation.canonical_id)))
+        .join(Observation, Observation.run_id == Run.id)
+        .group_by(Run.chain)
+    ).all()
+    return {
+        "products": products,
+        "observations": obs_count,
+        "per_chain": {c: n for c, n in chain_rows},
+        "chains": _chain_meta_map(),
+    }
+
+
 @router.get("/movers")
 def movers(window_days: int = Query(default=7, ge=1, le=30), db=Depends(get_db)):
     today = datetime.now(timezone.utc).date()
