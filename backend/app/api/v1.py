@@ -379,25 +379,63 @@ def inflation(db=Depends(get_db)):
         b, c = base_rows[gid], curr_rows[gid]
         if b > 0:
             deltas.append((gid, (c - b) / b * 100))
-    avg_change = round(sum(d for _, d in deltas) / len(deltas), 2)
-    up = sum(1 for _, d in deltas if d > 0)
-    movers = sorted(deltas, key=lambda x: abs(x[1]), reverse=True)[:8]
 
     id_to_name = dict(db.execute(text("SELECT id, canonical_name FROM items")).all())
-    meta_map = meta
+    id_to_cat = dict(db.execute(text("SELECT id, COALESCE(category,'essentials') FROM items")).all())
+
+    # category-level truth: which bucket does each compared item belong to?
+    def cat_of(cid):
+        row = db.execute(
+            text("SELECT r.chain FROM runs r JOIN observations o ON o.run_id=r.id WHERE o.canonical_id=:i LIMIT 1"),
+            {"i": cid},
+        ).first()
+        chain = row[0] if row else ""
+        if chain.startswith("commodities"):
+            return "gold-metals"
+        if chain.startswith("chain-"):
+            return "groceries"
+        return chain or "essentials"
+
+    cats: dict[str, list[float]] = {}
+    for gid, dpct in deltas:
+        cats.setdefault(cat_of(gid), []).append(dpct)
+
+    cat_summary = []
+    for cname, vals in cats.items():
+        cat_summary.append({
+            "category": cname,
+            "change_pct": round(sum(vals) / len(vals), 2),
+            "items": len(vals),
+            "window_days": (datetime.fromisoformat(latest_day) - datetime.fromisoformat(baseline_day)).days,
+        })
+    cat_summary.sort(key=lambda c: -abs(c["change_pct"]))
+
+    # the Mehngai Number = median of category medians (discount/outlier resistant)
+    import statistics
+    headline = round(statistics.median([c["change_pct"] for c in cat_summary]), 2) if cat_summary else 0
+    up = sum(1 for _, d in deltas if d > 0)
+
+    pretty = lambda n: (n.replace(" chennai 1 kg", " (Chennai)")
+                         .replace(" 1 kg", "")
+                         .replace(" per gram", ""))
+
+    movers = sorted(deltas, key=lambda x: abs(x[1]), reverse=True)[:8]
     return {
         "status": "live",
         "baseline_day": baseline_day,
         "latest_day": latest_day,
+        "window_days": (datetime.fromisoformat(latest_day) - datetime.fromisoformat(baseline_day)).days,
+        "basket_change_pct": headline,
+        "headline_basis": "median across tracked categories",
+        "categories": cat_summary,
         "items_compared": len(deltas),
-        "basket_change_pct": avg_change,
         "up_count": up,
         "down_count": len(deltas) - up,
         "top_movers": [
-            {"item": id_to_name.get(gid_, ""), "delta_pct": round(dpct, 1)}
+            {"item": pretty(id_to_name.get(gid_, "")), "delta_pct": round(dpct, 1)}
             for gid_, dpct in movers
         ],
-        "chains": meta_map,
+        "chains": meta,
     }
 
 
