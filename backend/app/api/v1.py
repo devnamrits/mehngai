@@ -384,14 +384,17 @@ def inflation(db=Depends(get_db)):
     id_to_cat = dict(db.execute(text("SELECT id, COALESCE(category,'essentials') FROM items")).all())
 
     # category-level truth: which bucket does each compared item belong to?
+    CAT_NAMES = {"gold-silver": "Gold & Silver", "fuel": "Fuel & commute",
+                 "groceries": "Groceries", "essentials": "Essentials"}
+
     def cat_of(cid):
         row = db.execute(
-            text("SELECT r.chain FROM runs r JOIN observations o ON o.run_id=r.id WHERE o.canonical_id=:i LIMIT 1"),
+            text("SELECT r.chain, o.raw_name FROM runs r JOIN observations o ON o.run_id=r.id WHERE o.canonical_id=:i LIMIT 1"),
             {"i": cid},
         ).first()
-        chain = row[0] if row else ""
+        chain, nm = (row[0], (row[1] or "").lower()) if row else ("", "")
         if chain.startswith("commodities"):
-            return "gold-metals"
+            return "fuel" if any(w in nm for w in ("petrol", "diesel", "lpg")) else "gold-silver"
         if chain.startswith("chain-"):
             return "groceries"
         return chain or "essentials"
@@ -400,19 +403,34 @@ def inflation(db=Depends(get_db)):
     for gid, dpct in deltas:
         cats.setdefault(cat_of(gid), []).append(dpct)
 
+    win_days = (datetime.fromisoformat(latest_day) - datetime.fromisoformat(baseline_day)).days
     cat_summary = []
     for cname, vals in cats.items():
         cat_summary.append({
             "category": cname,
+            "label": CAT_NAMES.get(cname, cname.title()),
             "change_pct": round(sum(vals) / len(vals), 2),
             "items": len(vals),
-            "window_days": (datetime.fromisoformat(latest_day) - datetime.fromisoformat(baseline_day)).days,
+            "window_days": win_days,
+            "status": "live",
         })
-    cat_summary.sort(key=lambda c: -abs(c["change_pct"]))
+
+    # every tracked category gets a chip, even baseline-only ones
+    for slug, label_extra in (("chain-a", None), ("chain-b", None), ("chain-c", None), ("chain-d", None)):
+        pass
+    for cname, label in (("groceries", "Groceries"), ("fuel", "Fuel & commute")):
+        if cname not in cats:
+            cat_summary.append({
+                "category": cname, "label": label, "change_pct": None,
+                "items": None, "window_days": None, "status": "baseline_today",
+            })
+    order = {"groceries": 0, "fuel": 1, "gold-silver": 2, "essentials": 3}
+    cat_summary.sort(key=lambda c: order.get(c["category"], 9))
 
     # the Mehngai Number = median of category medians (discount/outlier resistant)
     import statistics
-    headline = round(statistics.median([c["change_pct"] for c in cat_summary]), 2) if cat_summary else 0
+    live_cats = [c for c in cat_summary if c["status"] == "live"]
+    headline = round(statistics.median([c["change_pct"] for c in live_cats]), 2) if live_cats else 0
     up = sum(1 for _, d in deltas if d > 0)
 
     pretty = lambda n: (n.replace(" chennai 1 kg", " (Chennai)")
