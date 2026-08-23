@@ -23,6 +23,7 @@ class OrchestratorService:
         self._settings = settings
         self._pulse = pulse
         self._graduated: set[str] = set()
+        self._heal_cooldown: dict[str, float] = {}
 
     @property
     def contracts(self) -> list[CollectorContract]:
@@ -63,6 +64,7 @@ class OrchestratorService:
         healed = False
         collected_ok = True
         rows, collected_ok = self._collect(contract)
+        rows = [project_row(r) for r in rows]
         verdicts = run_validators(rows, contract) if collected_ok else []
         critical = [v for v in verdicts if v.is_critical]
 
@@ -103,6 +105,14 @@ class OrchestratorService:
         with self._repository_factory() as repo_session:
             SqlRepository(repo_session).open_incident(contract.collector_id, reason, prompt)
 
+        import time as _time
+        now = _time.monotonic()
+        last = self._heal_cooldown.get(contract.collector_id, 0)
+        if now - last < 1800:
+            self._pulse.emit("warn", "watchdog",
+                             f"{contract.chain}: heal skipped (cooldown)")
+            return False
+        self._heal_cooldown[contract.collector_id] = now
         auto_approve = contract.collector_id in self._graduated
         self._pulse.emit(
             "warn" if not auto_approve else "heal",
@@ -149,6 +159,17 @@ def flatten_rows(rows: list[dict]) -> list[dict]:
         if not exploded:
             flat.append(row)
     return flat
+
+
+def project_row(row: dict) -> dict:
+    """Project any collector's dialect onto the canonical schema BEFORE validation."""
+    return {
+        "title": _first(row, "title", "product_title", "name"),
+        "price": _extract_price(row),
+        "pack_size": _first(row, "pack_size", "pack_size_label", "weight"),
+        "brand": _first(row, "brand", "brand_name"),
+        "url": _first(row, "url", "product_page_url", "product_url", "link"),
+    }
 
 
 def _first(row: dict, *keys):
