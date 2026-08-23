@@ -48,15 +48,20 @@ function MehngaiHero() {
           </p>
           <div className="cat-chips">
             {(d.categories ?? []).map((c) => (
-              <span key={c.category} className={`cat-chip ${c.change_pct > 0 ? "up" : "down"}`}>
-                {c.category === "gold-metals" ? "gold & metals" : c.category}
-                <b>{c.change_pct > 0 ? "+" : ""}{c.change_pct}%</b>
-                <small>{c.items} items</small>
-              </span>
+              c.status === "live" ? (
+                <span key={c.category} className="cat-chip">
+                  {c.label}
+                  <b style={{ color: c.change_pct > 0 ? "var(--down)" : "var(--up)" }}>
+                    {c.change_pct > 0 ? "+" : ""}{c.change_pct}%
+                  </b>
+                  <small>· {c.window_days}d · {c.items} items</small>
+                </span>
+              ) : (
+                <span key={c.category} className="cat-chip pending">
+                  {c.label} · baseline today
+                </span>
+              )
             ))}
-            {!((d.categories ?? []).some((c) => c.category === "groceries")) && (
-              <span className="cat-chip pending">groceries · baseline locked today, joins next scan</span>
-            )}
           </div>
         </>
       )}

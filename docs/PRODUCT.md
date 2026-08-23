@@ -91,3 +91,25 @@ heals. Reliability is streamed into the product instead of being claimed in a sl
 - **Immediate feedback** — debounced suggestions, live totals on every quantity change.
 - **Honest empty states** — if data isn't there yet, we say so; we never invent numbers.
 - **Retailer identity** — real names and brand accents everywhere; no anonymous chain-a/b labels.
+
+
+## Category clusters (the full common-man basket)
+
+The Mehngai Number is a median across consumer-category clusters — each cluster
+is its own mini-index with an honest lifecycle (baseline → live after 2nd scan):
+
+| Cluster | Status | Source type |
+|---|---|---|
+| Groceries | live · 4 stores · 333 items | Scraper Studio Discovery/PDP collectors |
+| Fuel & commute (petrol/diesel/LPG) | baseline today | Commodity table collector |
+| Gold & Silver | 9-day window · +5.28% | Commodity history collector |
+| Electronics & big-ticket | connector designed (Apple/Croma) | roadmap |
+| Travel & airfare | connector designed (weekly true-fare scans) | roadmap |
+| Rent & school fees | connector designed (listing/fee-page scrapes) | roadmap |
+
+**Why weekly:** retail discounts are noise, not inflation. Weekly medians keep
+the indicator on true prices. **Why medians:** a single mis-scraped ₹9,900
+"milk" cannot move the index.
+
+**Gold's honest role:** a savings-benchmark cluster — the index leads with
+consumer essentials; gold sits beside them as context, never as the headline.
