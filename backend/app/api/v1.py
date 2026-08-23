@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import threading
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -25,10 +25,39 @@ from app.services.pulse import PulseBus
 router = APIRouter(prefix="/api/v1")
 
 
+@router.post("/admin/migrate-chains", dependencies=[Depends(require_pipeline_token)])
+def migrate_chains(db=Depends(get_db)):
+    """One-shot: bind historical runs to stable collector identities."""
+    from sqlalchemy import text
+    mapping = {
+        "c_mt5c5hypmg1k6ihr": "chain-a",
+        "c_mt5c5en7o0dctyrts": "chain-b",
+        "c_mt5m7lfd1bzykx33up": "chain-c",
+        "c_mt5c5gb22ixnkdfvp7": "chain-d",
+    }
+    changed_runs = 0
+    for cid, slug in mapping.items():
+        res = db.execute(
+            text("UPDATE runs SET chain=:slug WHERE collector_id=:cid AND chain != :slug"),
+            {"slug": slug, "cid": cid},
+        )
+        changed_runs += res.rowcount
+    db.execute(text("UPDATE observations SET chain=(SELECT r.chain FROM runs r WHERE r.id=observations.run_id)"))
+    db.commit()
+    return {"migrated_runs": changed_runs}
+
+
 @router.get("/health")
 def health(db=Depends(get_db)):
     db.execute(select(1))
     return {"status": "ok", "time": datetime.now(timezone.utc).isoformat()}
+
+
+FRESH_WINDOW_HOURS = 36
+
+
+def _fresh_cutoff():
+    return datetime.now(timezone.utc) - timedelta(hours=FRESH_WINDOW_HOURS)
 
 
 def _chain_meta_map() -> dict:
@@ -127,6 +156,7 @@ def basket(payload: dict, db=Depends(get_db)):
             .where(
                 Observation.canonical_id == item.id,
                 Observation.price.is_not(None),
+                Observation.collected_at >= _fresh_cutoff(),
             )
             .order_by(Observation.collected_at.desc())
         ).all()
@@ -137,6 +167,7 @@ def basket(payload: dict, db=Depends(get_db)):
                     "price": obs.price,
                     "unit_price": obs.unit_price,
                     "unit_label": obs.unit_label,
+                    "pack_size": obs.pack_size,
                     "name": obs.raw_name,
                     "url": obs.url,
                 }
@@ -178,39 +209,65 @@ def deals(db=Depends(get_db)):
     """Same product, multiple stores — biggest percentage gaps first."""
     meta = _chain_meta_map()
     rows = db.execute(
-        select(Observation.canonical_id, Item.canonical_name, Run.chain, Observation.price)
+        select(
+            Observation.canonical_id,
+            Item.canonical_name,
+            Run.chain,
+            Observation.price,
+            Observation.unit_price,
+            Observation.unit_label,
+            Observation.pack_size,
+        )
         .join(Item, Item.id == Observation.canonical_id)
         .join(Run, Run.id == Observation.run_id)
-        .where(Observation.price.is_not(None), Observation.price > 0)
+        .where(
+            Observation.price.is_not(None),
+            Observation.price > 0,
+            Observation.collected_at >= _fresh_cutoff(),
+        )
         .order_by(Observation.collected_at.desc())
-        .limit(2000)
+        .limit(3000)
     ).all()
 
-    latest: dict[int, dict[str, float]] = {}
+    latest: dict[int, dict[str, dict]] = {}
     names: dict[int, str] = {}
-    for cid, cname, chain, price in rows:
+    for cid, cname, chain, price, unit_price, unit_label, pack in rows:
         names[cid] = cname
         bucket = latest.setdefault(cid, {})
         if chain not in bucket:
-            bucket[chain] = price
+            effective = unit_price if (unit_price and unit_price > 0) else price
+            bucket[chain] = {
+                "price": price,
+                "effective": effective,
+                "unit_price": unit_price,
+                "unit_label": unit_label,
+                "pack_size": pack,
+            }
 
     deals_out = []
     for cid, prices_by_chain in latest.items():
         if len(prices_by_chain) < 2:
             continue
-        lo_chain = min(prices_by_chain, key=prices_by_chain.get)
-        hi_chain = max(prices_by_chain, key=prices_by_chain.get)
-        lo, hi = prices_by_chain[lo_chain], prices_by_chain[hi_chain]
-        gap_pct = round((hi - lo) / hi * 100, 1)
-        if gap_pct >= 3 and hi >= 30:
+        eff = {c: v["effective"] for c, v in prices_by_chain.items()}
+        lo_chain = min(eff, key=eff.get)
+        hi_chain = max(eff, key=eff.get)
+        lo_v, hi_v = eff[lo_chain], eff[hi_chain]
+        gap_pct = round((hi_v - lo_v) / hi_v * 100, 1)
+        if gap_pct >= 3 and hi_v >= 20:
+            low = prices_by_chain[lo_chain]
+            high = prices_by_chain[hi_chain]
+            per_unit = bool(low["unit_price"])
             deals_out.append({
                 "item": names[cid],
                 "buy_at": {"slug": lo_chain, **meta.get(lo_chain, {})},
                 "avoid": {"slug": hi_chain, **meta.get(hi_chain, {})},
-                "low_price": lo,
-                "high_price": hi,
+                "low_pack": low["pack_size"],
+                "high_pack": high["pack_size"],
+                "low_price": round(lo_v, 2),
+                "high_price": round(hi_v, 2),
+                "basis": low["unit_label"] or "per pack",
                 "gap_pct": gap_pct,
-                "you_save": round(hi - lo, 2),
+                "you_save": round(hi_v - lo_v, 2),
             })
     deals_out.sort(key=lambda d: d["gap_pct"], reverse=True)
     return {"deals": deals_out[:12], "chains": meta}

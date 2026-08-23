@@ -161,11 +161,36 @@ def flatten_rows(rows: list[dict]) -> list[dict]:
     return flat
 
 
+def _derive_price_from_unit(row: dict, pack_size, name):
+    up = row.get("unit_price")
+    if isinstance(up, dict):
+        up = up.get("value")
+    if up is None:
+        return None
+    try:
+        up = float(up)
+    except (TypeError, ValueError):
+        return None
+    from app.services.normalizer import parse_pack_size, to_base
+    info = parse_pack_size(pack_size, name)
+    if info.amount is None or info.unit is None:
+        return None
+    base = to_base(info.amount, info.unit)
+    if not base or base[0] <= 0:
+        return None
+    return round(up * base[0], 2)
+
+
 def project_row(row: dict) -> dict:
     """Project any collector's dialect onto the canonical schema BEFORE validation."""
     return {
         "title": _first(row, "title", "product_title", "name"),
-        "price": _extract_price(row),
+        "price": _extract_price(row)
+        or _derive_price_from_unit(
+            row,
+            _first(row, "pack_size", "pack_size_label", "weight"),
+            str(_first(row, "title", "product_title", "name") or ""),
+        ),
         "pack_size": _first(row, "pack_size", "pack_size_label", "weight"),
         "brand": _first(row, "brand", "brand_name"),
         "url": _first(row, "url", "product_page_url", "product_url", "link"),

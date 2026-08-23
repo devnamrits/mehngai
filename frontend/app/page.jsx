@@ -170,9 +170,11 @@ function BasketBuilder({ chainMeta, onChains }) {
                   <span className="prices">
                     {prices.length === 0 && <span className="mini-price">checking shelves…</span>}
                     {prices.map(([c, p]) => (
-                      <span key={c} className={`mini-price${p.price === min ? " best-mini" : ""}`}
-                        style={p.price === min ? { color: chainMeta[c]?.accent } : undefined}>
+                      <span key={c} className={`mini-price${(p.unit_price || p.price) === min ? " best-mini" : ""}`}
+                        title={p.pack_size ? `${p.name} · ${p.pack_size}` : p.name}
+                        style={(p.unit_price || p.price) === min ? { color: chainMeta[c]?.accent } : undefined}>
                         {(chainMeta[c]?.short ?? c)} {fmt(p.price)}
+                        {p.unit_price ? <small style={{ color: "var(--faint)" }}> ({fmt(p.unit_price)}/{(p.unit_label ?? "").replace("per ", "")})</small> : null}
                       </span>
                     ))}
                   </span>
@@ -243,11 +245,15 @@ function Deals({ chainMeta, onDeals, onChains }) {
           <div className="gap-pill">−{d.gap_pct}%<small>PAY LESS</small></div>
           <div className="deal-stores">
             <span className="deal-tag" style={{ borderColor: d.buy_at.accent, color: d.buy_at.accent }}>
-              ✓ {d.buy_at.name} ₹{d.low_price}
+              ✓ {d.buy_at.name} {d.basis === "per pack" ? `₹${d.low_price}` : `₹${d.low_price}/${d.basis.replace("per ", "")}`}
+              {d.low_pack ? ` · ${d.low_pack}` : ""}
             </span>
             vs
-            <span className="deal-tag">{d.avoid.name} ₹{d.high_price}</span>
-            <span>you save ₹{d.you_save}</span>
+            <span className="deal-tag">
+              {d.avoid.name} {d.basis === "per pack" ? `₹${d.high_price}` : `₹${d.high_price}/${d.basis.replace("per ", "")}`}
+              {d.high_pack && d.high_pack !== d.low_pack ? ` · ${d.high_pack}` : ""}
+            </span>
+            <span>you save {d.gap_pct}% on comparable units</span>
           </div>
         </div>
       ))}
@@ -290,25 +296,26 @@ function ShelfSnapshot({ stats, chainMeta, deals }) {
   );
 }
 
-function humanize(e) {
+function humanize(e, chainMeta) {
   const m = e.message ?? "";
+  const nameOf = (slug) => chainMeta?.[slug]?.name ?? slug;
   if (/nightly run starting/i.test(m)) return { text: "Nightly shelf scan started", level: "info" };
   if (/nightly complete|nightly run complete/i.test(m)) return { text: "Tonight's scan finished across all stores", level: "heal" };
   if (/stored (\d+) rows/.test(m)) {
     const n = m.match(/stored (\d+)/)[1];
     const chain = m.split(":")[0].trim();
-    const names = { "chain-a": "Nature's Basket", "chain-c": "Spencer's", "chain-d": "Modern Bazaar" };
-    return { text: `${names[chain] ?? chain}: ${n} products captured from the shelf`, level: "info" };
+    if (/0 rows/.test(m)) return null;
+    return { text: `${nameOf(chain)}: ${n} products captured from the shelf`, level: "info" };
   }
   if (/drift:/i.test(m)) return { text: "A store redesigned its page — self-repair started", level: "warn" };
   if (/heal applied|recovered/i.test(m)) return { text: "Scraper repaired itself — collection resumed, same API", level: "heal" };
   if (/409|refactor|heal failed|trigger failed|no input/i.test(m)) return null;
   if (/error/i.test(e.level)) return null;
-  const pretty = m.replace(/chain-[a-d]/g, (c) => ({ "chain-a": "Nature's Basket", "chain-b": "DMart", "chain-c": "Spencer's", "chain-d": "Modern Bazaar" }[c] ?? c));
+  const pretty = m.replace(/chain-[a-d]/g, nameOf);
   return { text: pretty, level: e.level };
 }
 
-function PulseCard({ events, live }) {
+function PulseCard({ events, live, chainMeta }) {
   return (
     <div className="rail-card">
       <p className="kicker" style={{ marginBottom: 4 }}>
@@ -316,7 +323,7 @@ function PulseCard({ events, live }) {
       </p>
       <ul className="pulse-mini">
         {[...events].reverse()
-          .map((e) => ({ ...e, h: humanize(e) }))
+          .map((e) => ({ ...e, h: humanize(e, chainMeta) }))
           .filter((e) => e.h && e.h.text)
           .slice(0, 10)
           .map((e, i) => (
@@ -378,7 +385,7 @@ export default function Page() {
         </main>
         <aside>
           <HowItWorks />
-          <PulseCard events={pulseEvents} live={live} />
+          <PulseCard events={pulseEvents} live={live} chainMeta={chainMeta} />
         </aside>
       </div>
       <footer className="footer">

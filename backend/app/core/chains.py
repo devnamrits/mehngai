@@ -1,7 +1,8 @@
 DEFAULT_CHAIN_META = {
     "chain-a": {"name": "Nature's Basket", "short": "NB", "accent": "#7bc96f"},
-    "chain-b": {"name": "DMart Ready", "short": "DM", "accent": "#ff8c42"},
-    "chain-c": {"name": "Spencer's", "short": "SP", "accent": "#5ec8d8"},
+    "chain-b": {"name": "Spencer's", "short": "SP", "accent": "#5ec8d8"},
+    "chain-c": {"name": "Modern Bazaar", "short": "MB", "accent": "#e8a0bf"},
+    "chain-d": {"name": "DMart Ready", "short": "DM", "accent": "#ff8c42"},
     "chain-d": {"name": "Modern Bazaar", "short": "MB", "accent": "#e8a0bf"},
 }
 
