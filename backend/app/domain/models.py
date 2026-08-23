@@ -29,6 +29,7 @@ class Item(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     canonical_name: Mapped[str] = mapped_column(String(256), unique=True)
+    group_key: Mapped[str | None] = mapped_column(String(256), nullable=True, index=True)
     category: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 

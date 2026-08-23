@@ -229,3 +229,27 @@ section { margin-bottom: 26px; }
 }
 .smart-sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
 .smart-sub b { color: var(--down); font-family: var(--mono); }
+
+/* ---------- comparison matrix ---------- */
+table.matrix { width: 100%; border-collapse: collapse; }
+.matrix th {
+  font-family: var(--mono); font-size: 12px; letter-spacing: .1em;
+  padding: 10px 8px 12px 0; text-align: right;
+  border-bottom: 1px solid var(--line);
+}
+.matrix th:first-child { text-align: left; }
+.matrix td { padding: 11px 8px 11px 0; border-bottom: 1px solid var(--line-soft); }
+.m-item { font-size: 13.5px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-cell { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.m-cell .cross { color: var(--faint); opacity: .5; }
+.m-cell .win { color: var(--up); font-weight: 600; }
+.m-total-row td {
+  border-top: 2px solid var(--line); border-bottom: none;
+  font-weight: 600; padding-top: 14px; color: var(--text);
+}
+.cov { display: block; font-weight: 400; color: var(--faint); font-size: 10.5px; }
+.takeaway {
+  margin: 0 18px 16px; padding: 13px 16px;
+  background: var(--saffron-soft); border-radius: 10px;
+  font-size: 14.5px; line-height: 1.6;
+}

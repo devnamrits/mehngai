@@ -47,6 +47,28 @@ def migrate_chains(db=Depends(get_db)):
     return {"migrated_runs": changed_runs}
 
 
+@router.post("/admin/backfill-groups", dependencies=[Depends(require_pipeline_token)])
+def backfill_groups(db=Depends(get_db)):
+    """One-shot: pack-agnostic grouping for every known item."""
+    from sqlalchemy import text
+    from app.services.normalizer import guess_category, group_key as gk
+
+    try:
+        db.execute(text("ALTER TABLE items ADD COLUMN group_key VARCHAR(256)"))
+        db.commit()
+    except Exception:
+        pass  # column already exists
+    rows = db.execute(text("SELECT id, canonical_name FROM items")).all()
+    for item_id, cname in rows:
+        db.execute(
+            text("UPDATE items SET group_key=:g WHERE id=:i"),
+            {"g": gk(cname), "i": item_id},
+        )
+    db.commit()
+    groups = db.execute(text("SELECT COUNT(DISTINCT group_key) FROM items")).scalar()
+    return {"items_grouped": len(rows), "distinct_groups": groups}
+
+
 @router.get("/health")
 def health(db=Depends(get_db)):
     db.execute(select(1))

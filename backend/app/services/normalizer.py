@@ -75,3 +75,19 @@ def guess_category(name: str) -> str | None:
         if pattern.search(name):
             return category
     return None
+
+
+_PACK_TOKENS = re.compile(
+    r"\b\d+(?:[.,]\d+)?\s*(?:kg|kgs|g|gm|grams?|l|ltr|litres?|liters?|ml|pc|pcs|units?|pack|pouch|bottle|tin|box|jar)\b\s*|"
+    r"\b(?:x)?\d+\b\s*|"
+    r"\b(?:pack of \d+|combo|offer|free)\b",
+    re.I,
+)
+
+
+def group_key(name: str) -> str:
+    """Pack-agnostic identity: same product at two stores must collide here."""
+    lowered = re.sub(r"[^a-z0-9\s]", " ", name.lower())
+    stripped = _PACK_TOKENS.sub(" ", lowered)
+    collapsed = re.sub(r"\s+", " ", stripped).strip()
+    return collapsed or normalize_name(name)

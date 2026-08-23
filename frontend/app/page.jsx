@@ -161,23 +161,9 @@ function BasketBuilder({ chainMeta, onChains }) {
         <>
           <ul className="basket-list">
             {basket.map((b) => {
-              const info = result?.items?.find((i) => i.item === b.item);
-              const prices = Object.entries(info?.prices ?? {});
-              const min = Math.min(...prices.map(([, p]) => p.price ?? Infinity));
               return (
                 <li key={b.item} className="basket-item">
                   <span className="n">{b.item}</span>
-                  <span className="prices">
-                    {prices.length === 0 && <span className="mini-price">checking shelves…</span>}
-                    {prices.map(([c, p]) => (
-                      <span key={c} className={`mini-price${(p.unit_price || p.price) === min ? " best-mini" : ""}`}
-                        title={p.pack_size ? `${p.name} · ${p.pack_size}` : p.name}
-                        style={(p.unit_price || p.price) === min ? { color: chainMeta[c]?.accent } : undefined}>
-                        {(chainMeta[c]?.short ?? c)} {fmt(p.price)}
-                        {p.unit_price ? <small style={{ color: "var(--faint)" }}> ({fmt(p.unit_price)}/{(p.unit_label ?? "").replace("per ", "")})</small> : null}
-                      </span>
-                    ))}
-                  </span>
                   <span className="qty">
                     <button onClick={() => bump(b.item, -1)}>−</button>
                     <b>{b.qty}</b>
@@ -191,51 +177,101 @@ function BasketBuilder({ chainMeta, onChains }) {
           </ul>
 
           <div className={`verdict${result ? "" : " dim"}`}>
-            {result?.smart_total !== undefined && (
-              <div className="smart-head">
-                <span className="kicker" style={{ marginBottom: 0 }}>Smart cart · each item at its cheapest store</span>
-                <div className="smart-num">{fmt(result.smart_total)}</div>
-                {result.spread > 0 && (
-                  <div className="smart-sub">
-                    Picking wrong on {result.multi_store_lines} item{result.multi_store_lines > 1 ? "s" : ""} could cost{" "}
-                    <b>+{fmt(result.spread)}</b> ({result.spread_pct}%)
+            {(() => {
+              if (!result) return null;
+              const slugs = Object.keys(result.chains ?? {}).filter(
+                (slug) => Object.values(result.totals ?? {}).some(() => true) || true
+              );
+              const lines = (result.items ?? []).filter((i) => i.found);
+              const cellPrice = (line, slug) => line.prices?.[slug]?.price;
+              const fmtCell = (v) => (v === undefined ? "" : `₹${Number(v).toLocaleString("en-IN")}`);
+
+              return (
+                <>
+                  <p className="kicker" style={{ padding: "16px 18px 0" }}>
+                    Store-by-store · your basket on every shelf
+                  </p>
+                  <table className="matrix">
+                    <thead>
+                      <tr>
+                        <th>Item</th>
+                        {slugs.map((slug) => (
+                          <th key={slug} className="num" style={{ color: result.chains[slug]?.accent }}>
+                            {result.chains[slug]?.short}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lines.map((line) => {
+                        const entries = slugs.map((slug) => [slug, cellPrice(line, slug)]);
+                        const present = entries.filter(([, v]) => v !== undefined);
+                        const min = Math.min(...present.map(([, v]) => Number(v)));
+                        return (
+                          <tr key={line.item}>
+                            <td className="m-item">{line.item}</td>
+                            {entries.map(([slug, v]) => (
+                              <td key={slug} className="num m-cell">
+                                {v === undefined ? (
+                                  <span className="cross">✕</span>
+                                ) : (
+                                  <span className={Number(v) === min && present.length > 1 ? "win" : ""}>
+                                    {Number(v) === min && present.length > 1 ? "✓ " : ""}
+                                    {fmtCell(v)}
+                                  </span>
+                                )}
+                              </td>
+                            ))}
+                          </tr>
+                        );
+                      })}
+                      <tr className="m-total-row">
+                        <td>Basket here ({lines.length} items)</td>
+                        {slugs.map((slug) => {
+                          const covered = lines.filter((l) => l.prices?.[slug]?.price !== undefined).length;
+                          const total = lines.reduce(
+                            (a, l) => a + (l.prices?.[slug]?.price ?? 0),
+                            0,
+                          );
+                          return (
+                            <td key={slug} className="num">
+                              {covered > 0 ? fmtCell(total) : "—"}
+                              <small className="cov"> {covered}/{lines.length}</small>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  <div className="takeaway">
+                    {result.comparable && result.cheapest_chain ? (
+                      <>🏆 <b>{result.chains[result.cheapest_chain]?.name}</b> stocks all {lines.length} items
+                      for <b>{fmt(result.totals[result.cheapest_chain])}</b> — the simplest single-store run.</>
+                    ) : (
+                      <>🧠 No single store stocks all {lines.length}. Smart mix — buy each line at its ✓ —{" "}
+                      costs <b>{fmt(result.smart_total)}</b>{result.spread > 0 && (
+                        <> vs {fmt(result.smart_total + result.spread)} at worst</>
+                      )}.</>
+                    )}
                   </div>
-                )}
-              </div>
-            )}
-            <div className="verdict-rows">
-              {sorted.map(([slug, total]) => {
-                const m = chainMeta[slug] ?? {};
-                const isWin = slug === cheapest;
-                return (
-                  <div key={slug} className="vrow">
-                    <span className="vdot" style={{ background: m.accent }} />
-                    <span className="vname">{m.name ?? slug}{isWin && " · best"}</span>
-                    <span className="vdots" />
-                    <span className="vnum" style={{ color: isWin ? "var(--up)" : undefined }}>{fmt(total)}</span>
-                  </div>
-                );
-              })}
-            </div>
-            {result?.comparable && savingsPct > 0 && cheapest && sorted.length > 1 && (
-              <div className="save-banner">
-                🛒 One-stop shopping at <b>{chainMeta[cheapest]?.name}</b>? That&apos;s{" "}
-                <b>{fmt(totals[cheapest])}</b> — {savingsPct}% pricier than mixing stores smartly.
-              </div>
-            )}
-            {!result?.comparable && result?.item_deal && (
-              <div className="save-banner">
-                🎯 Best swap in your basket: <b>{result.item_deal.item}</b> costs{" "}
-                <b>{fmt(result.item_deal.low_price)}</b> at{" "}
-                <b style={{ color: chainMeta[result.item_deal.buy_at.slug]?.accent }}>
-                  {chainMeta[result.item_deal.buy_at.slug]?.name}
-                </b>{" "}
-                vs {fmt(result.item_deal.high_price)} at{" "}
-                {chainMeta[result.item_deal.avoid.slug]?.name} ({result.item_deal.gap_pct}% less).
-              </div>
-            )}
-            {result?.note && <div className="save-banner" style={{ background: "var(--panel-2)" }}>ℹ️ {result.note}</div>}
-          </div>
+
+                  {!result.comparable && result.item_deal && (
+                    <div className="save-banner">
+                      🎯 Biggest single swap: <b>{result.item_deal.item}</b> at{" "}
+                      <b style={{ color: chainMeta[result.item_deal.buy_at.slug]?.accent }}>
+                        {chainMeta[result.item_deal.buy_at.slug]?.name} {fmt(result.item_deal.low_price)}
+                      </b>{" "}
+                      vs {fmt(result.item_deal.high_price)} at {chainMeta[result.item_deal.avoid.slug]?.name}{" "}
+                      ({result.item_deal.gap_pct}% less).
+                    </div>
+                  )}
+                  {result.note && (
+                    <div className="save-banner" style={{ background: "var(--panel-2)" }}>ℹ️ {result.note}</div>
+                  )}
+                </>
+              );
+            })()}</div>
         </>
       )}
 

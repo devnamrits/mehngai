@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.domain.models import Incident, IndexPoint, Item, Observation, Run, utcnow
 from app.ports.repository import NewObservation, Repository
-from app.services.normalizer import guess_category, normalize_name
+from app.services.normalizer import guess_category, group_key, normalize_name
 
 
 class SqlRepository(Repository):
@@ -52,7 +52,7 @@ class SqlRepository(Repository):
             return None
         item = self._session.scalar(select(Item).where(Item.canonical_name == canonical))
         if item is None:
-            item = Item(canonical_name=canonical, category=guess_category(raw_name))
+            item = Item(canonical_name=canonical, group_key=group_key(raw_name), category=guess_category(raw_name))
             self._session.add(item)
             self._session.flush()
         return item.id
