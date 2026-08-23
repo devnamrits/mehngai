@@ -39,16 +39,25 @@ function MehngaiHero() {
 
       {d?.status === "live" && (
         <>
-          <div
-            className="mega"
-            style={{ color: d.basket_change_pct > 0 ? "var(--down)" : "var(--up)" }}
-          >
+          <div className="mega" style={{ color: d.basket_change_pct > 0 ? "var(--down)" : "var(--up)" }}>
             {d.basket_change_pct > 0 ? "+" : ""}{d.basket_change_pct}<span>%</span>
           </div>
           <p className="hero-sub">
-            grocery shelf prices moved this much since <b>{d.baseline_day}</b> —
-            across <b>{d.items_compared} everyday items</b> on real store shelves.
+            median move across tracked essentials over the last{" "}
+            <b>{d.window_days} days</b> — measured on real shelves.
           </p>
+          <div className="cat-chips">
+            {(d.categories ?? []).map((c) => (
+              <span key={c.category} className={`cat-chip ${c.change_pct > 0 ? "up" : "down"}`}>
+                {c.category === "gold-metals" ? "gold & metals" : c.category}
+                <b>{c.change_pct > 0 ? "+" : ""}{c.change_pct}%</b>
+                <small>{c.items} items</small>
+              </span>
+            ))}
+            {!((d.categories ?? []).some((c) => c.category === "groceries")) && (
+              <span className="cat-chip pending">groceries · baseline locked today, joins next scan</span>
+            )}
+          </div>
         </>
       )}
 

@@ -294,3 +294,14 @@ table.matrix { table-layout: fixed; width: 100%; border-collapse: collapse; }
 .tick-item { font-family: var(--mono); font-size: 13px; color: var(--muted); }
 .tick-item b { margin-left: 8px; font-weight: 600; }
 @keyframes scrollx { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+.cat-chips { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 18px; }
+.cat-chip {
+  font-family: var(--mono); font-size: 12.5px;
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 6px 13px; color: var(--muted); background: var(--panel);
+}
+.cat-chip b { margin-left: 8px; }
+.cat-chip.up b { color: var(--down); }
+.cat-chip.down b { color: var(--up); }
+.cat-chip.pending { border-style: dashed; font-family: var(--sans); }
