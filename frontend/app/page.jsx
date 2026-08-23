@@ -454,7 +454,7 @@ function InflationCard() {
   );
 }
 
-function MovementsCard() { {
+function MovementsCard() {
   const [data, setData] = useState(null);
 
   useEffect(() => {
