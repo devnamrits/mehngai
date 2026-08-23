@@ -1,10 +1,26 @@
 # Mehngai 📈
 
-> A live, independent cost-of-living index — computed daily from real shelf prices by **self-healing web scrapers** that never go down.
+> **India's live grocery-inflation index** — measured from real supermarket shelves, computed by self-healing web scrapers that repair themselves when stores redesign.
 >
 > *Into the Scrape-Verse* hackathon submission · WeMakeDevs × Bright Data · Aug 2026
 
-Official inflation stats lag weeks and measure baskets nobody buys. Mehngai reads regional supermarket catalog pages daily through Bright Data Scraper Studio collectors, normalizes everything into comparable ₹/kg·₹/L unit prices, chains them into a transparent index — and when a retail site changes its layout at 2am, the built-in watchdog detects the drift and heals the collector autonomously. Same Collector ID, zero downtime, receipts logged.
+Official inflation numbers take weeks and measure abstract baskets. Mehngai reads four real Indian retailers (Nature's Basket, Spencer's, Modern Bazaar, DMart Ready) plus commodity markets (gold, fuel) through Bright Data Scraper Studio collectors, normalizes everything into comparable unit prices, and publishes **the Mehngai Number**: month-over-month shelf-price change, chained exactly like a CPI — but from live shelves.
+
+**The comparator is the addon. The index is the product.**
+
+- **The Mehngai Number** — month-over-month % across tracked essentials (auto-compounds with each weekly scan)
+- **Mehngai Meter + ticker** — live per-item price movements between scans, with receipts
+- **Basket matrix** — pick what your family buys; every store's price side-by-side, ✓ cheapest / ✕ absent, smart-mix total
+- **Smarter Pick Radar** — same product at two stores? Biggest gaps surfaced automatically
+- **System Pulse** — the self-healing watchdog's public diary: every drift detection and autonomous repair, streamed into the product
+
+## Example API outputs
+
+Real responses captured from the running system: [`examples/`](examples)
+- `inflation.json` — the Mehngai Number payload
+- `basket.json` — store-by-store basket comparison
+- `movements.json` — per-item price movements
+- `deals.json`, `stats.json`, `chains.json`
 
 ## Architecture
 
