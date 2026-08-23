@@ -10,6 +10,12 @@ export const api = {
   health: () => get("/api/v1/health"),
   index: (days = 30, scope = "") => get(`/api/v1/index?days=${days}&scope=${scope}`),
   prices: (q) => get(`/api/v1/prices?q=${encodeURIComponent(q)}`),
+  basketCompare: (payload) =>
+    fetch(`${BASE}/api/v1/basket`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then((r) => { if (!r.ok) throw new Error(`basket ${r.status}`); return r.json(); }),
   movers: (windowDays = 7) => get(`/api/v1/movers?window_days=${windowDays}`),
   briefing: () => get("/api/v1/insights/daily"),
   pulseRecent: () => get("/api/v1/pulse/recent"),

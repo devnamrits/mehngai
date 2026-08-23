@@ -12,6 +12,7 @@ from app.api.deps import (
     get_scraper,
     require_pipeline_token,
 )
+from app.core.chains import chain_meta, parse_chain_names
 from app.core.config import get_settings
 from app.core.db import session_scope
 from app.domain.models import Incident, IndexPoint, Item, Observation, Run
@@ -30,6 +31,17 @@ def health(db=Depends(get_db)):
     return {"status": "ok", "time": datetime.now(timezone.utc).isoformat()}
 
 
+def _chain_meta_map() -> dict:
+    settings = get_settings()
+    overrides = parse_chain_names(settings.chain_names)
+    return {slug: chain_meta(slug, overrides) for slug in ("chain-a", "chain-b", "chain-c")}
+
+
+@router.get("/chains")
+def chains():
+    return {"chains": _chain_meta_map()}
+
+
 @router.get("/index")
 def index(
     days: int = Query(default=30, ge=1, le=365),
@@ -42,7 +54,7 @@ def index(
     for point in reversed(series):
         if point["scope"] not in latest:
             latest[point["scope"]] = point
-    return {"series": series, "latest": latest}
+    return {"series": series, "latest": latest, "chains": _chain_meta_map()}
 
 
 @router.get("/prices")
@@ -84,7 +96,81 @@ def prices(q: str = Query(min_length=2), db=Depends(get_db)):
             }
         if len(entry["history"]) < 60:
             entry["history"].append({"day": obs.collected_at.date().isoformat(), "price": obs.price})
-    return {"query": q, "results": list(grouped.values())}
+    return {"query": q, "results": list(grouped.values()), "chains": _chain_meta_map()}
+
+
+@router.post("/basket")
+def basket(payload: dict, db=Depends(get_db)):
+    items = payload.get("items") or []
+    if not isinstance(items, list) or not items:
+        raise HTTPException(status_code=422, detail="items required: [{q, qty}]")
+
+    resolved = []
+    for entry in items[:40]:
+        q = str(entry.get("q", "")).strip()
+        qty = max(1, min(60, int(entry.get("qty") or 1)))
+        if len(q) < 2:
+            continue
+        needle = f"%{q.lower()}%"
+        canonical = normalize_name(q)
+        item = db.scalar(
+            select(Item).where(
+                or_(func.lower(Item.canonical_name).like(needle), Item.canonical_name == canonical)
+            ).limit(1)
+        )
+        if not item:
+            resolved.append({"q": q, "qty": qty, "found": False})
+            continue
+        rows = db.execute(
+            select(Observation, Run.chain)
+            .join(Run, Run.id == Observation.run_id)
+            .where(
+                Observation.canonical_id == item.id,
+                Observation.price.is_not(None),
+            )
+            .order_by(Observation.collected_at.desc())
+        ).all()
+        latest_by_chain: dict[str, dict] = {}
+        for obs, chain in rows:
+            if chain not in latest_by_chain:
+                latest_by_chain[chain] = {
+                    "price": obs.price,
+                    "unit_price": obs.unit_price,
+                    "unit_label": obs.unit_label,
+                    "name": obs.raw_name,
+                    "url": obs.url,
+                }
+        resolved.append({
+            "q": q, "qty": qty, "found": True,
+            "item": item.canonical_name,
+            "prices": latest_by_chain,
+        })
+
+    totals: dict[str, float] = {}
+    covered: dict[str, int] = {}
+    for entry in resolved:
+        if not entry.get("found"):
+            continue
+        for chain, p in entry["prices"].items():
+            if p["price"] is None:
+                continue
+            totals[chain] = round(totals.get(chain, 0.0) + p["price"] * entry["qty"], 2)
+            covered[chain] = covered.get(chain, 0) + 1
+
+    found_items = [e for e in resolved if e.get("found")]
+    full_coverage_chains = [c for c in totals if found_items and covered[c] == len(found_items)]
+
+    cheapest = min(full_coverage_chains or totals, key=totals.get) if totals else None
+    priciest = max(totals, key=totals.get) if totals else None
+    return {
+        "items": resolved,
+        "totals": totals,
+        "cheapest_chain": cheapest,
+        "priciest_chain": priciest,
+        "savings": round((totals[priciest] - totals[cheapest]) * (100 / totals[priciest]), 1) if cheapest and priciest and totals[priciest] else 0,
+        "monthly_note": "estimates use today's shelf prices × your quantity",
+        "chains": _chain_meta_map(),
+    }
 
 
 @router.get("/movers")
@@ -106,6 +192,9 @@ def movers(window_days: int = Query(default=7, ge=1, le=30), db=Depends(get_db))
             change = (pts[-1].value / pts[0].value - 1) * 100
             results.append({"scope": scope, "change_pct": round(change, 2), "window_days": window_days})
     results.sort(key=lambda r: abs(r["change_pct"]), reverse=True)
+    meta = _chain_meta_map()
+    for r in results:
+        r["name"] = meta.get(r["scope"], {}).get("name", r["scope"])
     return {"movers": results[:10]}
 
 

@@ -1,15 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, fmt, openPulseStream } from "../lib/api";
 import { Sparkline } from "../components/Sparkline";
 
 function Masthead() {
   const today = new Date().toLocaleDateString("en-IN", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
   });
   return (
     <>
@@ -18,196 +15,204 @@ function Masthead() {
           Mehngai<span>.</span>
         </h1>
         <div className="dateline">
-          <b>{today}</b>
-          <br />
+          <b>{today}</b><br />
           Vol. 1 — the daily price truth
         </div>
       </header>
       <div className="tagline">
-        An independent cost-of-living index computed nightly from real shelf prices by{" "}
-        <em>self-healing scrapers</em> that refuse to die. No officials consulted.
+        India&apos;s independent grocery price watchdog. Real shelf prices from{" "}
+        <em>real stores</em>, collected nightly by scrapers that heal themselves.
+        Know what things cost — and where they cost less.
       </div>
     </>
   );
 }
 
-function IndexHero({ series }) {
-  const blend = series.filter((p) => p.scope === "blend");
-  const latest = blend[blend.length - 1];
-  const prev = blend.length > 1 ? blend[blend.length - 2] : null;
-  const delta = latest && prev ? ((latest.value / prev.value - 1) * 100).toFixed(2) : null;
-  const dir = delta === null ? "flat" : Number(delta) > 0 ? "up" : Number(delta) < 0 ? "down" : "flat";
+function BasketBuilder({ chainMeta }) {
+  const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [basket, setBasket] = useState([]);
+  const [result, setResult] = useState(null);
+  const timer = useRef(null);
+
+  const payload = useMemo(
+    () => ({ items: basket.map((b) => ({ q: b.q, qty: b.qty })) }),
+    [basket],
+  );
+
+  useEffect(() => {
+    clearTimeout(timer.current);
+    if (query.trim().length < 2) { setSuggestions([]); return; }
+    timer.current = setTimeout(async () => {
+      try {
+        const d = await api.prices(query.trim());
+        setSuggestions((d.results ?? []).slice(0, 6));
+      } catch {}
+    }, 220);
+    return () => clearTimeout(timer.current);
+  }, [query]);
+
+  useEffect(() => {
+    if (basket.length === 0) { setResult(null); return; }
+    const t = setTimeout(async () => {
+      try { setResult(await api.basketCompare(payload)); } catch {}
+    }, 200);
+    return () => clearTimeout(t);
+  }, [payload]);
+
+  const addItem = (item, q) => {
+    setBasket((prev) => prev.some((b) => b.item === item)
+      ? prev
+      : [...prev, { item, q, qty: 1 }]);
+    setQuery(""); setSuggestions([]);
+  };
+  const bump = (item, delta) => setBasket((prev) =>
+    prev.map((b) => (b.item === item ? { ...b, qty: Math.max(1, Math.min(60, b.qty + delta)) } : b)));
+  const remove = (item) => setBasket((prev) => prev.filter((b) => b.item !== item));
+
+  const totals = result?.totals ?? {};
+  const sortedChains = Object.entries(totals).sort((a, b) => a[1] - b[1]);
+  const cheapestId = result?.cheapest_chain;
+  const savingsPct = result?.savings ?? 0;
 
   return (
-    <section>
-      <div className="kicker">The Mehngai Index · blended basket</div>
-      <div className="hero">
-        <div>
-          <div className="big">
-            {latest ? latest.value.toFixed(1) : "—"}
-            <small>base 100</small>
+    <section id="basket">
+      <div className="kicker">Your monthly basket · kitna kharcha aata hai?</div>
+
+      <div className="searchline">
+        <input
+          placeholder="add items — milk, atta, detergent…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <span className="hint">{basket.length} in basket</span>
+      </div>
+
+      {suggestions.length > 0 && (
+        <ul className="suggest">
+          {suggestions.map((s) => (
+            <li key={s.item}>
+              <button onClick={() => addItem(s.item, s.item)}>
+                <span className="item-name">{s.item}</span>
+                <span className="chain-tags">
+                  {Object.keys(s.chains).map((c) => (
+                    <span key={c} className="chain-tag"
+                      style={{ borderColor: chainMeta[c]?.accent }}>
+                      {(chainMeta[c]?.short ?? c)}
+                    </span>
+                  ))}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {basket.length > 0 && (
+        <>
+          <table className="ledger basket-ledger">
+            <tbody>
+              {basket.map((b) => (
+                <tr key={b.item}>
+                  <td className="item-name">{b.item}</td>
+                  <td className="qty-cell">
+                    <button onClick={() => bump(b.item, -1)}>−</button>
+                    <span>{b.qty}</span>
+                    <button onClick={() => bump(b.item, +1)}>+</button>
+                  </td>
+                  <td className="num">
+                    {result?.items?.find((i) => i.item === b.item)?.prices &&
+                      (() => {
+                        const prices = result.items.find((i) => i.item === b.item).prices;
+                        const entries = Object.entries(prices);
+                        const min = Math.min(...entries.map(([, p]) => p.price ?? Infinity));
+                        return entries.map(([c, p]) => (
+                          <span key={c}
+                            className={`mini-price${p.price === min ? " best-mini" : ""}`}
+                            style={{ color: p.price === min ? chainMeta[c]?.accent : undefined }}>
+                            {chainMeta[c]?.short}: {fmt(p.price)}
+                          </span>
+                        ));
+                      })()}
+                  </td>
+                  <td className="num"><button className="x" onClick={() => remove(b.item)}>✕</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className={`verdict${result ? " show" : ""}`}>
+            {sortedChains.length > 0 && (
+              <>
+                <div className="verdict-title">Your basket, today</div>
+                <div className="verdict-rows">
+                  {sortedChains.map(([slug, total], idx) => (
+                    <div key={slug} className={`vrow${slug === cheapestId ? " winner" : ""}`}>
+                      <span className="vname" style={{ color: chainMeta[slug]?.accent }}>
+                        {chainMeta[slug]?.name ?? slug}
+                      </span>
+                      <span className="vdots" />
+                      <span className="vnum">{fmt(total)}</span>
+                      {slug === cheapestId && <span className="vbadge">best</span>}
+                    </div>
+                  ))}
+                </div>
+                {savingsPct > 0 && (
+                  <p className="save-line">
+                    Ordering from <b style={{ color: chainMeta[cheapestId]?.accent }}>
+                      {chainMeta[cheapestId]?.name}</b>{" "}
+                    keeps <b>{savingsPct}%</b> of this basket in your pocket.
+                  </p>
+                )}
+              </>
+            )}
           </div>
-          {delta !== null && (
-            <span className={`delta ${dir}`}>
-              {dir === "up" ? "▲" : dir === "down" ? "▼" : "■"} {Math.abs(delta)}% vs last run
-              {dir === "up" && " — your basket got pricier"}
-              {dir === "down" && " — relief, briefly"}
-            </span>
-          )}
+        </>
+      )}
+
+      {basket.length === 0 && (
+        <div className="empty-note">
+          Build your month&apos;s essentials list — we&apos;ll price it at every store, live.
         </div>
+      )}
+    </section>
+  );
+}
+
+function IndexStrip({ series }) {
+  const blend = series.filter((p) => p.scope === "blend");
+  const latest = blend[blend.length - 1];
+  return (
+    <section>
+      <div className="kicker">The Mehngai Index · blended basket vs first collection</div>
+      <div className="indexstrip">
+        <div className="big-small">{latest ? latest.value.toFixed(1) : "—"}</div>
         <Sparkline points={blend} />
       </div>
     </section>
   );
 }
 
-function ChainStrip({ series }) {
+function ChainCards({ series, chainMeta }) {
   const scopes = [...new Set(series.map((p) => p.scope))].filter((s) => s !== "blend");
   const latestBy = {};
   for (const p of series) latestBy[p.scope] = p.value;
-  const cheapest = scopes.slice().sort((a, b) => latestBy[a] - latestBy[b])[0];
 
   return (
     <section>
-      <div className="kicker">Chain indices</div>
+      <div className="kicker">Store indices · who inflated faster</div>
       <div className="chains">
-        {scopes.map((scope) => (
-          <div key={scope} className={`chain-card${scope === cheapest && scopes.length > 1 ? " best" : ""}`}>
-            <div className="name">{scope.replace("chain-", "")}</div>
-            <div className="value">{(latestBy[scope] ?? 100).toFixed(1)}</div>
-            <div className="sub">vs base 100</div>
-          </div>
-        ))}
+        {scopes.map((scope) => {
+          const m = chainMeta[scope] ?? {};
+          return (
+            <div key={scope} className="chain-card" style={{ borderTopColor: m.accent }}>
+              <div className="name" style={{ color: m.accent }}>{m.name ?? scope}</div>
+              <div className="value">{(latestBy[scope] ?? 100).toFixed(1)}</div>
+              <div className="sub">vs base 100</div>
+            </div>
+          );
+        })}
       </div>
-    </section>
-  );
-}
-
-function Explorer() {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState([]);
-  const [searched, setSearched] = useState(false);
-  const timer = useRef(null);
-
-  useEffect(() => {
-    clearTimeout(timer.current);
-    if (query.trim().length < 2) {
-      setResults([]);
-      setSearched(false);
-      return;
-    }
-    timer.current = setTimeout(async () => {
-      try {
-        const data = await api.prices(query.trim());
-        setResults(data.results ?? []);
-        setSearched(true);
-      } catch {
-        /* keep old results on failure */
-      }
-    }, 250);
-    return () => clearTimeout(timer.current);
-  }, [query]);
-
-  return (
-    <section>
-      <div className="kicker">Price explorer · what does it cost where?</div>
-      <div className="searchline">
-        <input
-          autoFocus
-          placeholder="milk, atta, detergent…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <span className="hint">type ≥ 2 letters</span>
-      </div>
-
-      {searched && results.length === 0 && (
-        <div className="empty-note">Nothing on the shelves matches “{query}”. Yet.</div>
-      )}
-
-      {results.length > 0 && (
-        <table className="ledger">
-          <thead>
-            <tr>
-              <th>Item</th>
-              {Object.keys(results[0].chains).map((c) => (
-                <th key={c} className="num">
-                  {c.replace("chain-", "")}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {results.map((r) => {
-              const entries = Object.entries(r.chains);
-              const min = Math.min(...entries.map(([, v]) => v.price ?? Infinity));
-              return (
-                <tr key={r.item}>
-                  <td className="item-name">{r.item}</td>
-                  {entries.map(([chain, v]) => (
-                    <td key={chain} className={`num${v.price === min ? " best-cell" : ""}`}>
-                      {v.price === min ? "◆ " : ""}
-                      {fmt(v.price)}
-                    </td>
-                  ))}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
-    </section>
-  );
-}
-
-function Movers({ windowDays }) {
-  const [movers, setMovers] = useState([]);
-
-  useEffect(() => {
-    api
-      .movers(windowDays)
-      .then((d) => setMovers(d.movers ?? []))
-      .catch(() => {});
-  }, [windowDays]);
-
-  const maxAbs = Math.max(...movers.map((m) => Math.abs(m.change_pct)), 1);
-
-  return (
-    <section>
-      <div className="kicker">Movers · last {windowDays} days</div>
-      {movers.map((m) => (
-        <div key={m.scope} className="mover-row">
-          <span>{m.scope.replace("chain-", "")}</span>
-          <div className="bar">
-            <i style={{ width: `${(Math.abs(m.change_pct) / maxAbs) * 100}%` }} />
-          </div>
-          <span className="pct" style={{ color: m.change_pct >= 0 ? "var(--down)" : "var(--up)" }}>
-            {m.change_pct >= 0 ? "+" : ""}
-            {m.change_pct}%
-          </span>
-        </div>
-      ))}
-      {movers.length === 0 && <div className="empty-note">Not enough history yet.</div>}
-    </section>
-  );
-}
-
-function Briefing() {
-  const [brief, setBrief] = useState(null);
-
-  useEffect(() => {
-    api
-      .briefing()
-      .then(setBrief)
-      .catch(() => {});
-  }, []);
-
-  if (!brief) return null;
-  return (
-    <section>
-      <div className="kicker">Today’s briefing</div>
-      <div className="briefing">{brief.narrative}</div>
-      <div className="source-tag">source: {brief.source}</div>
     </section>
   );
 }
@@ -226,21 +231,44 @@ function PulseRail({ events, live }) {
           <li key={`${e.ts}-${i}`}>
             <span className={`lv ${e.level}`} />
             <div className="msg">
-              <time>{new Date(e.ts).toLocaleTimeString("en-IN")}</time>
-              <br />
+              <time>{new Date(e.ts).toLocaleTimeString("en-IN")}</time><br />
               {LEVEL_LABEL[e.level] && <b>[{LEVEL_LABEL[e.level]}] </b>}
               {e.message}
             </div>
           </li>
         ))}
         {events.length === 0 && (
-          <li>
-            <span className="lv info" />
-            <div className="msg">Waiting for the next collection…</div>
-          </li>
+          <li><span className="lv info" /><div className="msg">Waiting for the next collection…</div></li>
         )}
       </ul>
     </aside>
+  );
+}
+
+function OverpricedList({ series }) {
+  const [rows, setRows] = useState([]);
+
+  useEffect(() => { api.movers(7).then((d) => setRows(d.movers ?? [])).catch(() => {}); }, []);
+  void series;
+
+  return (
+    <section>
+      <div className="kicker">Overpriced radar · fastest risers this week</div>
+      {rows.map((m) => (
+        <div key={m.scope} className="mover-row">
+          <span className="ov-name" style={{ color: m.name ? undefined : "var(--text)" }}>{m.name ?? m.scope}</span>
+          <div className="bar"><i style={{ width: `${Math.min(100, Math.abs(m.change_pct))}%` }} /></div>
+          <span className="pct" style={{ color: m.change_pct >= 0 ? "var(--down)" : "var(--up)" }}>
+            {m.change_pct >= 0 ? "+" : ""}{m.change_pct}%
+          </span>
+        </div>
+      ))}
+      {rows.length === 0 && (
+        <div className="empty-note">
+          Day one of tracking — the radar fills as nightly runs accumulate.
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -248,45 +276,34 @@ export default function Page() {
   const [series, setSeries] = useState([]);
   const [pulseEvents, setPulseEvents] = useState([]);
   const [live, setLive] = useState(false);
+  const [chainMeta, setChainMeta] = useState({});
 
   useEffect(() => {
-    api
-      .index(30)
-      .then((d) => setSeries(d.series ?? []))
-      .catch(() => {});
-
-    api
-      .pulseRecent()
-      .then((d) => setPulseEvents(d.events ?? []))
-      .catch(() => {});
+    api.index(30).then((d) => { setSeries(d.series ?? []); setChainMeta(d.chains ?? {}); }).catch(() => {});
+    api.pulseRecent().then((d) => setPulseEvents(d.events ?? [])).catch(() => {});
   }, []);
 
-  useEffect(
-    () =>
-      openPulseStream(
-        (event) => setPulseEvents((prev) => [...prev.slice(-200), event]),
-        setLive,
-      ),
-    [],
-  );
+  useEffect(() => openPulseStream(
+    (event) => setPulseEvents((prev) => [...prev.slice(-200), event]),
+    setLive,
+  ), []);
 
   return (
     <div className="page">
       <Masthead />
       <div className="grid">
         <main>
-          <IndexHero series={series} />
-          <ChainStrip series={series} />
-          <Explorer />
-          <Briefing />
+          <BasketBuilder chainMeta={chainMeta} />
+          <IndexStrip series={series} />
+          <ChainCards series={series} chainMeta={chainMeta} />
         </main>
         <div>
           <PulseRail events={pulseEvents} live={live} />
-          <Movers windowDays={7} />
+          <OverpricedList series={series} />
         </div>
       </div>
       <footer className="footer">
-        <span>Mehngai — built with Bright Data Scraper Studio self-healing collectors.</span>
+        <span>Mehngai — powered by Bright Data Scraper Studio self-healing collectors.</span>
         <span>public API · /api/v1/*</span>
       </footer>
     </div>

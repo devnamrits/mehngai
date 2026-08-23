@@ -15,6 +15,7 @@ class Settings(BaseSettings):
 
     collector_ids: str = ""
     collector_urls: str = ""
+    chain_names: str = ""
 
     pipeline_token: str = "change-me"
     cors_origins: str = "*"
