@@ -1,3 +1,4 @@
+import json
 import time
 
 import httpx
@@ -13,40 +14,75 @@ class BrightDataError(RuntimeError):
 class BrightDataAdapter(ScraperStudioPort):
     def __init__(self, settings: Settings, client: httpx.Client | None = None) -> None:
         self._settings = settings
-        self._client = client or httpx.Client(timeout=30.0)
+        self._client = client or httpx.Client(timeout=60.0)
 
     def trigger_and_collect(self, collector_id: str, url: str | None) -> list[dict]:
-        snapshot_id = self._trigger(collector_id, url)
-        return self._poll_snapshot(snapshot_id)
+        collection_id = self._trigger(collector_id, url)
+        return self._poll_dataset(collection_id)
 
     def heal(self, request: HealRequest) -> HealResult:
-        if request.auto_approve:
-            return self._heal_auto(request)
-        return self._heal_supervised(request)
+        base = f"{self._settings.brightdata_api_base}/dca/collectors/{request.collector_id}"
+        headers = self._headers()
+
+        start_body = {"prompt": request.prompt[:1000], "custom_input": []}
+        if request.url:
+            start_body["url"] = request.url
+        response = self._client.post(f"{base}/refactor_template", json=start_body, headers=headers)
+        if response.status_code >= 400:
+            raise BrightDataError(f"heal start failed {response.status_code}: {response.text[:300]}")
+
+        progress = self._await_status(base, headers, ("awaiting_approval", "done"))
+        if not request.auto_approve and progress.get("status") != "done":
+            return HealResult(approved=False, status="awaiting_approval",
+                              detail=str(progress.get("preview_result"))[:500])
+
+        resume_body = {"message": True}
+        response = self._client.post(f"{base}/resume_automation_job", json=resume_body, headers=headers)
+        if response.status_code >= 400:
+            raise BrightDataError(f"resume failed {response.status_code}: {response.text[:300]}")
+
+        final = self._await_status(base, headers, ("done", "completed"))
+        return HealResult(approved=True, status=str(final.get("status")), detail="heal applied")
+
+    def _await_status(self, base: str, headers: dict, done_statuses: tuple[str, ...],
+                      timeout_s: int = 1500, interval_s: int = 15) -> dict:
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            response = self._client.get(f"{base}/refactor_template/progress", headers=headers)
+            if response.status_code >= 400:
+                raise BrightDataError(f"progress failed {response.status_code}")
+            body = response.json()
+            status = str(body.get("status", "")).lower()
+            if status in done_statuses:
+                return body
+            time.sleep(interval_s)
+        raise BrightDataError("heal timed out")
 
     def _trigger(self, collector_id: str, url: str | None) -> str:
-        payload: dict = {"collector_id": collector_id}
+        params = {"collector": collector_id}
+        payload = []
         if url:
-            payload["url"] = url
+            payload.append({"url": url})
         response = self._client.post(
             f"{self._settings.brightdata_api_base}/dca/trigger",
+            params=params,
             json=payload,
             headers=self._headers(),
         )
         if response.status_code >= 400:
             raise BrightDataError(f"trigger failed {response.status_code}: {response.text[:300]}")
         body = response.json()
-        snapshot_id = body.get("snapshot_id") or body.get("id")
-        if not snapshot_id:
-            raise BrightDataError(f"no snapshot id for {collector_id}: {body}")
-        return str(snapshot_id)
+        collection_id = body.get("collection_id") or body.get("snapshot_id") or body.get("id")
+        if not collection_id:
+            raise BrightDataError(f"no collection id: {str(body)[:200]}")
+        return str(collection_id)
 
-    def _poll_snapshot(self, snapshot_id: str, timeout_s: int = 900, interval_s: int = 10) -> list[dict]:
+    def _poll_dataset(self, collection_id: str, timeout_s: int = 1200, interval_s: int = 10) -> list[dict]:
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
             response = self._client.get(
-                f"{self._settings.brightdata_api_base}/dca/dataset/{snapshot_id}",
-                params={"format": "json"},
+                f"{self._settings.brightdata_api_base}/dca/dataset",
+                params={"id": collection_id, "format": "json"},
                 headers=self._headers(),
             )
             if response.status_code >= 400:
@@ -56,71 +92,43 @@ class BrightDataAdapter(ScraperStudioPort):
             except ValueError:
                 time.sleep(interval_s)
                 continue
+
             if isinstance(body, list):
                 return body
+
             status = str(body.get("status", "")).lower()
-            if status in ("running", "pending", "collected"):
-                time.sleep(interval_s)
-                continue
-            if status == "failed":
-                raise BrightDataError(f"snapshot {snapshot_id} failed")
+            result = body.get("result")
+            raw = result
+            if isinstance(result, dict):
+                raw = result.get("body", result.get("data", result))
+
+            if status in ("ready", "done", "completed", "collected"):
+                parsed = self._parse_payload(raw)
+                if parsed is not None:
+                    return parsed
+            elif status in ("failed", "error"):
+                raise BrightDataError(f"collection {collection_id} failed")
             time.sleep(interval_s)
-        raise BrightDataError(f"snapshot {snapshot_id} timed out")
+        raise BrightDataError(f"collection {collection_id} timed out")
 
-    def _heal_supervised(self, request: HealRequest) -> HealResult:
-        job_id = self._start_refactor(request)
-        prompt_answer = self._await_refactor(job_id)
-        approved = self._resume_job(job_id, approve=True)
-        detail = str(prompt_answer)[:500]
-        return HealResult(approved=approved, status="done" if approved else "rejected", detail=detail)
-
-    def _heal_auto(self, request: HealRequest) -> HealResult:
-        result = self._heal_supervised(request)
-        return result
-
-    def _start_refactor(self, request: HealRequest) -> str:
-        url = f"{self._settings.brightdata_api_base}/dca/collectors/{request.collector_id}/refactor_template"
-        payload = {"prompt": request.prompt[:1000]}
-        if request.url:
-            payload["url"] = request.url
-        response = self._client.post(url, json=payload, headers=self._headers())
-        if response.status_code >= 400:
-            raise BrightDataError(f"refactor start failed {response.status_code}: {response.text[:300]}")
-        body = response.json()
-        job_id = body.get("job_id") or body.get("id")
-        if not job_id:
-            raise BrightDataError(f"no refactor job id: {body}")
-        return str(job_id)
-
-    def _await_refactor(self, job_id: str, timeout_s: int = 1200, interval_s: int = 15):
-        deadline = time.monotonic() + timeout_s
-        progress_url = (
-            f"{self._settings.brightdata_api_base}"
-            f"/dca/collectors/refactor_template/{job_id}/progress"
-        )
-        while time.monotonic() < deadline:
-            response = self._client.get(progress_url, headers=self._headers())
-            if response.status_code >= 400:
-                raise BrightDataError(f"refactor progress failed {response.status_code}")
-            body = response.json()
-            status = str(body.get("status", "")).lower()
-            if status in ("pending_answer", "done", "completed"):
-                return body
-            time.sleep(interval_s)
-        raise BrightDataError(f"refactor job {job_id} timed out")
-
-    def _resume_job(self, job_id: str, approve: bool) -> bool:
-        url = (
-            f"{self._settings.brightdata_api_base}"
-            f"/dca/collectors/refactor_template/{job_id}/resume_automation_job"
-        )
-        response = self._client.post(url, json={"approve": approve}, headers=self._headers())
-        if response.status_code >= 400:
-            raise BrightDataError(f"resume failed {response.status_code}: {response.text[:300]}")
-        return True
+    @staticmethod
+    def _parse_payload(raw):
+        if isinstance(raw, list):
+            return raw
+        if isinstance(raw, str):
+            try:
+                parsed = json.loads(raw)
+                return parsed if isinstance(parsed, list) else [parsed]
+            except ValueError:
+                return [{"text": raw}]
+        if isinstance(raw, dict):
+            return [raw]
+        return None
 
     def _headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self._settings.brightdata_api_key}",
             "Content-Type": "application/json",
         }
+
+

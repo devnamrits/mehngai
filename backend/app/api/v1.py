@@ -1,4 +1,5 @@
 from datetime import date, datetime, timezone
+import threading
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sse_starlette.sse import EventSourceResponse
@@ -171,6 +172,15 @@ def insights_daily(db=Depends(get_db)):
     return service.daily_briefing()
 
 
+_pipeline_lock = threading.Lock()
+_pipeline_state: dict = {"status": "idle", "started_at": None, "finished_at": None, "summary": None}
+
+
+@router.get("/pipeline/status")
+def pipeline_status():
+    return _pipeline_state
+
+
 @router.post("/pipeline/run", dependencies=[Depends(require_pipeline_token)])
 def pipeline_run(scraper=Depends(get_scraper)):
     db = next(get_db())
@@ -181,10 +191,29 @@ def pipeline_run(scraper=Depends(get_scraper)):
     finally:
         db.close()
 
-    service = OrchestratorService(
-        scraper=scraper,
-        repository_factory=session_scope,
-        settings=get_settings(),
-        pulse=get_pulse_bus(),
-    )
-    return service.run_nightly()
+    if not _pipeline_lock.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="a pipeline job is already running")
+
+    _pipeline_state.update(status="running", started_at=datetime.now(timezone.utc).isoformat(),
+                           finished_at=None, summary=None)
+
+    def _worker():
+        try:
+            service = OrchestratorService(
+                scraper=scraper,
+                repository_factory=session_scope,
+                settings=get_settings(),
+                pulse=get_pulse_bus(),
+            )
+            summary = service.run_nightly()
+            _pipeline_state["summary"] = summary
+            _pipeline_state["status"] = "done"
+        except Exception as exc:
+            _pipeline_state["status"] = "error"
+            _pipeline_state["summary"] = {"error": str(exc)}
+        finally:
+            _pipeline_state["finished_at"] = datetime.now(timezone.utc).isoformat()
+            _pipeline_lock.release()
+
+    threading.Thread(target=_worker, daemon=True).start()
+    return {"job": "started", "check": "/api/v1/pipeline/status"}

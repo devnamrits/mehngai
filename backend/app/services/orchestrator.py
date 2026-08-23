@@ -27,11 +27,13 @@ class OrchestratorService:
     @property
     def contracts(self) -> list[CollectorContract]:
         labels = ["a", "b", "c", "d", "e"]
+        urls = self._settings.collector_url_list
         return [
             CollectorContract(
                 collector_id=collector_id,
                 chain=f"chain-{labels[i % len(labels)]}",
                 required_fields=("title", "price"),
+                target_url=urls[i] if i < len(urls) else None,
             )
             for i, collector_id in enumerate(self._settings.collectors)
         ]
@@ -59,14 +61,15 @@ class OrchestratorService:
 
     def _run_chain(self, contract: CollectorContract) -> dict:
         healed = False
-        rows = self._collect(contract)
-        verdicts = run_validators(rows, contract)
+        collected_ok = True
+        rows, collected_ok = self._collect(contract)
+        verdicts = run_validators(rows, contract) if collected_ok else []
         critical = [v for v in verdicts if v.is_critical]
 
-        if critical and rows is not None:
+        if critical and collected_ok:
             healed = self._attempt_heal(contract, critical)
             if healed:
-                rows = self._collect(contract)
+                rows, _ = self._collect(contract)
                 retry_critical = [v for v in run_validators(rows, contract) if v.is_critical]
                 healed = not retry_critical
 
@@ -86,12 +89,13 @@ class OrchestratorService:
 
         return {"chain": contract.chain, "collector": contract.collector_id, "rows": stored, "status": status, "healed": healed}
 
-    def _collect(self, contract: CollectorContract) -> list[dict]:
+    def _collect(self, contract: CollectorContract) -> tuple[list[dict], bool]:
         try:
-            return self._scraper.trigger_and_collect(contract.collector_id, None)
+            rows = self._scraper.trigger_and_collect(contract.collector_id, contract.target_url)
+            return flatten_rows(rows), True
         except Exception as exc:
             self._pulse.emit("error", "collect", f"{contract.chain}: {exc}")
-            return []
+            return [], False
 
     def _attempt_heal(self, contract: CollectorContract, critical: list[Verdict]) -> bool:
         reason = "; ".join(v.detail for v in critical)
@@ -129,26 +133,65 @@ class OrchestratorService:
 
 
 
+_LIST_KEYS = ("product_listings", "products", "items")
+
+
+def flatten_rows(rows: list[dict]) -> list[dict]:
+    flat: list[dict] = []
+    for row in rows:
+        exploded = False
+        for key in _LIST_KEYS:
+            listings = row.get(key)
+            if isinstance(listings, list) and listings and all(isinstance(x, dict) for x in listings):
+                flat.extend(listings)
+                exploded = True
+                break
+        if not exploded:
+            flat.append(row)
+    return flat
+
+
+def _first(row: dict, *keys):
+    for key in keys:
+        value = row.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _extract_price(row: dict) -> float | None:
+    for key in ("price", "selling_price", "final_price"):
+        value = row.get(key)
+        if isinstance(value, dict):
+            value = value.get("value")
+        if value is None or value == "":
+            continue
+        parsed = _as_float(value)
+        if parsed is not None:
+            return parsed
+    return None
+
+
 def to_observations(rows: list[dict], chain: str, collected_at=None) -> list[NewObservation]:
     observations: list[NewObservation] = []
     for row in rows:
-        raw_name = str(row.get("title") or row.get("name") or "").strip()
+        raw_name = str(_first(row, "title", "product_title", "name") or "").strip()
         if not raw_name:
             continue
-        price = _as_float(row.get("price"))
-        pack_size = row.get("pack_size") or row.get("packSize")
+        price = _extract_price(row)
+        pack_size = _first(row, "pack_size", "pack_size_label", "weight")
         unit = compute_unit_price(price, str(pack_size) if pack_size else None, raw_name)
         observations.append(
             NewObservation(
                 chain=chain,
                 raw_name=raw_name,
-                brand=row.get("brand"),
+                brand=_first(row, "brand", "brand_name"),
                 pack_size=str(pack_size) if pack_size else None,
                 price=price,
-                currency=str(row.get("currency") or "INR"),
+                currency="INR",
                 unit_price=unit.value,
                 unit_label=unit.label,
-                url=row.get("url"),
+                url=_first(row, "url", "product_page_url", "product_url", "link"),
                 collected_at=collected_at,
             )
         )

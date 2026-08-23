@@ -1,0 +1,25 @@
+name: nightly-collection
+
+on:
+  schedule:
+    - cron: "30 21 * * *" # 03:00 IST daily
+  workflow_dispatch: {}
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Mehngai pipeline
+        run: |
+          for i in 1 2 3; do
+            code=$(curl -s -o /tmp/resp.json -w "%{http_code}" \
+              -X POST "${{ secrets.MEHNGAI_API_URL }}/api/v1/pipeline/run" \
+              -H "Authorization: Bearer ${{ secrets.PIPELINE_TOKEN }}" || echo 000)
+            if [ "$code" = "200" ]; then
+              cat /tmp/resp.json
+              exit 0
+            fi
+            echo "attempt $i got $code — backend may be waking from idle, retrying"
+            sleep 60
+          done
+          exit 1

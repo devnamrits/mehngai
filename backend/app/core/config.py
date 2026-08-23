@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     brightdata_api_base: str = "https://api.brightdata.com"
 
     collector_ids: str = ""
+    collector_urls: str = ""
 
     pipeline_token: str = "change-me"
     cors_origins: str = "*"
@@ -34,6 +35,10 @@ class Settings(BaseSettings):
     @property
     def collectors(self) -> list[str]:
         return [c.strip() for c in self.collector_ids.split(",") if c.strip()]
+
+    @property
+    def collector_url_list(self) -> list[str]:
+        return [u.strip() for u in self.collector_urls.split("|") if u.strip()]
 
     @property
     def cors_origin_list(self) -> list[str]:

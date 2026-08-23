@@ -97,6 +97,28 @@ export BRIGHTDATA_API_KEY=...      # headless auth, no bdata login needed
 COLLECTOR_IDS=c_aaa,c_bbb,c_ccc    # pin real IDs; MOCK_MODE off automatically
 ```
 
+## How Bright Data Scraper Studio powers Mehngai
+
+Scraper Studio is not an add-on here — **every data point in the product originates from a custom Studio collector**:
+
+1. **Creation** — each tracked chain has a collector built with `bdata scraper create <category-url> "<field description>"`. The AI Agent generates the output schema (`title, price, pack_size, brand, url`), writes the scraper code, and returns a `c_*` Collector ID. We run Discovery-type collectors over public category/listing pages of regional Indian grocery chains.
+2. **Running** — collectors are production APIs: our backend triggers them via `POST /dca/trigger`, polls `GET /dca/dataset/{id}`, and ingests rows. No scraping servers of our own — proxies, retries and unblocking are Bright Data's.
+3. **Self-healing** — our watchdog validates every run (empty-run / null-ratio / schema-drift / price-outlier heuristics). On critical drift it calls the native heal flow (`refactor_template → progress → resume_automation_job`) with a field-level plain-language prompt. The Collector ID never changes, so nothing downstream is reconfigured. First heal per collector is supervised; afterwards healing is autonomous, with every incident receipted in `incidents`.
+4. **Why these targets** — all chains are public catalog pages without login or paywall; none are covered by Bright Data's pre-built scraper library; no government websites are touched.
+
+## Deployment
+
+| Piece | Host | Notes |
+|---|---|---|
+| `backend/` | Render free web service | `render.yaml` included; set env vars from `backend/.env.example` |
+| Database | Neon free Postgres | connection string goes in `DATABASE_URL`; survives restarts |
+| `frontend/` | Vercel free | Next.js; set `NEXT_PUBLIC_API_URL` to your Render URL |
+| Scheduler | GitHub Actions | `nightly.yml` cron POSTs `/pipeline/run`; set repo secrets `MEHNGAI_API_URL`, `PIPELINE_TOKEN` |
+
+## AI assistance disclosure
+
+This project was built with AI coding assistance (Claude Code) for scaffolding, boilerplate, and iteration speed. All architecture decisions, target selection, compliance checks, and code review were performed by the team, who can explain every module — see `docs/HLD.md`, `docs/PRODUCT.md`, and the test suite for the reasoning trail.
+
 ## Compliance
 
-Public catalog pages only · no login/paywall/personal data · no government sites · custom Scraper Studio collectors (not library) · secrets via env only · AI assistance disclosed.
+Public catalog pages only · no login/paywall/personal data · no government sites · custom Scraper Studio collectors (not library) · secrets via env only · AI assistance disclosed above.

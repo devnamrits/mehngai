@@ -26,8 +26,10 @@ class FakeScraper(ScraperStudioPort):
     def __init__(self, responses: dict[str, list[list[dict]]]) -> None:
         self._responses = responses
         self.heals: list[HealRequest] = []
+        self.calls: list[tuple[str, str | None]] = []
 
     def trigger_and_collect(self, collector_id: str, url):
+        self.calls.append((collector_id, url))
         queue = self._responses.setdefault(collector_id, [])
         return queue.pop(0) if queue else []
 

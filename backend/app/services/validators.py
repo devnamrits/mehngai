@@ -27,6 +27,7 @@ class CollectorContract:
     price_field: str = "price"
     null_ratio_threshold: float = 0.4
     price_outlier_multiplier: float = 10.0
+    target_url: str | None = None
 
 
 class DriftValidator:

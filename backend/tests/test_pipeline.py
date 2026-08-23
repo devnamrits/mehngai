@@ -42,7 +42,7 @@ def seed_day(session, chain: str, day: str, prices: list[float]):
 
 class TestOrchestratorAndIndex:
     def test_heal_flow_on_empty_then_recovery(self, db_session, fake_scraper):
-        settings = type("S", (), {"collectors": ["c_test"]})()
+        settings = type("S", (), {"collectors": ["c_test"], "collector_url_list": ["https://example.com/cat"]})()
         fake_scraper._responses["c_test"] = [
             [],
             [{"title": "Rice 1kg", "price": 80, "pack_size": "1 kg", "url": "u"}],
@@ -62,6 +62,7 @@ class TestOrchestratorAndIndex:
         assert len(summary["runs"]) == 1
         assert summary["healed"] == ["chain-a"]
         assert len(fake_scraper.heals) == 1
+        assert fake_scraper.calls[0] == ("c_test", "https://example.com/cat")
 
     def test_index_chains_from_base_100(self, db_session):
         seed_day(db_session, "chain-A", "2026-08-20", [50.0])
