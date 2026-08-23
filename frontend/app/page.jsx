@@ -333,7 +333,7 @@ function BasketBuilder({ chainMeta }) {
                   <b>{fmt(result.totals[result.cheapest_chain])}</b>. Smart mix across stores:{" "}
                   <b>{fmt(result.smart_total)}</b> — you keep {fmt(result.spread)} extra in your pocket.</>
                 ) : (
-                  <>No single store stocks all {lines_count} lines. Smart mix — buy each line where it&apos;s{" "}
+                  <>No single store stocks all {(result.items ?? []).filter((i) => i.found).length} lines. Smart mix — buy each line where it&apos;s{" "}
                   <b style={{ color: "var(--up)" }}>✓ cheapest</b>:{" "}
                   <b>{fmt(result.smart_total)}</b>
                   {result.spread > 0 && (
