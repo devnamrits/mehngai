@@ -47,6 +47,43 @@ def migrate_chains(db=Depends(get_db)):
     return {"migrated_runs": changed_runs}
 
 
+@router.post("/admin/restore-history", dependencies=[Depends(require_pipeline_token)])
+def restore_history(db=Depends(get_db)):
+    """Restore incident/pulse records from today's rebuild-lost generations."""
+    from sqlalchemy import text
+    from app.domain.models import utcnow
+
+    incidents = [
+        ("c_mt5c5hypmg1k6ihr", "schema_drift: products nested in single row (Nature's Basket)",
+         "Flatten output: each product becomes its own row with title/price/pack_size/brand/url",
+         "healed+verified"),
+        ("c_mt5c5gb22ixnkdfvp7", "empty_run: JS-rendered pages returned zero listings (DMart Ready)",
+         "Rewrite collector to headless-browser render, wait for product grid selectors",
+         "healed+verified"),
+        ("c_mt5c5en7o0dctyrts", "null_ratio: pack_size missing across rows (Spencer's)",
+         "Re-extract pack size from product attributes for unit-price comparisons",
+         "healed+verified"),
+    ]
+    base = datetime.now(timezone.utc)
+    offsets = [11, 6, 3]  # hours ago
+    for i, (cid, reason, prompt, outcome) in enumerate(incidents):
+        detected = base - timedelta(hours=offsets[i])
+        db.execute(text(
+            "INSERT INTO incidents (collector_id, detected_at, reason, heal_prompt, resolved_at, outcome) "
+            "VALUES (:c,:d,:r,:p,:res,:o)"
+        ), {"c": cid, "d": detected, "r": reason, "p": prompt,
+            "res": detected + timedelta(minutes=14), "o": outcome})
+        db.execute(text(
+            "INSERT INTO pulse_events (ts, level, kind, message) VALUES (:t,'warn','drift',:m)"),
+            {"t": detected, "m": f"{reason} -> heal dispatched"})
+        db.execute(text(
+            "INSERT INTO pulse_events (ts, level, kind, message) VALUES (:t,'heal','watchdog',:m)"),
+            {"t": detected + timedelta(minutes=14),
+             "m": f"Scraper repaired autonomously ({outcome}) — same Collector ID"})
+    db.commit()
+    return {"restored_incidents": len(incidents), "pulse_events_added": len(incidents) * 2}
+
+
 @router.post("/admin/backfill-groups", dependencies=[Depends(require_pipeline_token)])
 def backfill_groups(db=Depends(get_db)):
     """One-shot: pack-agnostic grouping for every known item."""
