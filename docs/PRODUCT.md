@@ -1,0 +1,63 @@
+# Mehngai — Product Explained
+
+> A newspaper-style dashboard that tells you **how much more expensive everyday life got today**, computed independently from real supermarket shelf prices, kept alive by scrapers that repair themselves.
+
+## The daily machine
+
+```
+cron fires → trigger collectors on Bright Data → JSON rows come back
+→ validators inspect rows for anomalies → if broken: auto-heal, re-run
+→ normalize prices to ₹/kg · ₹/L → resolve same items across chains
+→ compute today's index number → store → briefing generated → alerts sent
+```
+
+Everything on the dashboard is the readable surface of this pipeline.
+
+## Vocabulary
+
+### Chain
+A supermarket retailer we track ("data source" in plain words). One Scraper Studio collector per chain. Chain names are configuration, not code.
+
+### Base 100
+The index convention statisticians use. The **first collection day becomes 100**; every later number reads *"same basket, what % cost now?"*. An index of **113.5** means the identical basket that cost ₹1,000 on day one costs **₹1,135 today**. Deliberately relative — it measures change, exactly like official CPI.
+
+### Chain indices
+The same basket tracked **per retailer**. If chain-a sits at 110 while chain-c sits at 118, chain-c inflated faster. The saffron-highlighted card marks the currently cheapest chain.
+
+### Blended basket
+The average across chains — one glanceable headline number ("the India view"), with per-chain cards beneath for detail. Macro lens + micro lens.
+
+### How the math works (chained index)
+1. Every item is normalized to a **unit price**: ₹/kg solids, ₹/L liquids — so Amul 500ml @ ₹33 and Amul 1L @ ₹66 compete fairly.
+2. Per item we take today's **median unit price** across listings (median, because one mis-scraped ₹9,900 "milk" cannot poison the number).
+3. Today's index = **yesterday's index × (today's basket ÷ yesterday's basket)**, chained day over day, with day-one prices frozen as reference weights. Method string: `chained-laspeyres`.
+
+### Movers
+Leaderboard of which chain's prices changed fastest over the last N days (default 7) — "who is squeezing me this week?". Red ▲ = getting expensive (bad for you), green ▼ = relief.
+
+### Price explorer
+Type any item → ledger of what each chain charges today, ◆ marking the cheapest. The daily-usefulness feature; everything else is context around it.
+
+### System Pulse
+The watchdog's public diary. Every collection emits events:
+
+| Level | Meaning |
+|---|---|
+| info | stored N rows |
+| warn / drift | something looked wrong (empty run, null ratio spike, schema drift, price outliers) |
+| heal | auto-repaired via `bdata scraper heal` flow — same Collector ID, zero downtime |
+| error | unresolved fault |
+
+Most projects hide scraper ops; Mehngai streams them into the product, because "never goes down" should be provable, not claimed. Incident receipts are also persisted (`incidents` table).
+
+### Briefing
+AI-generated summary built strictly from verified facts (index levels, deltas, movers, open incidents). With `AI_BASE_URL` set it runs through any OpenAI-compatible LLM (Ollama locally, DGX Spark later); without it, a deterministic template writes the same briefing — the feature never breaks and costs nothing.
+
+## Why this design
+
+| Feature | Judging criterion it serves |
+|---|---|
+| Base-100 chained index | Technical excellence |
+| Movers + explorer | Impact — usable daily by real people |
+| Pulse rail + incident receipts | Reliability & self-healing (the sponsor's core ask) |
+| Blended vs per-chain split | Creativity — macro lens + micro lens |
