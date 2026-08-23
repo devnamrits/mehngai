@@ -205,13 +205,25 @@ function BasketBuilder({ chainMeta, onChains }) {
                 );
               })}
             </div>
-            {savingsPct > 0 && cheapest && (
+            {result?.comparable && savingsPct > 0 && cheapest && sorted.length > 1 && (
               <div className="save-banner">
-                🛒 Order from <b>{chainMeta[cheapest]?.name}</b> → keep{" "}
-                <b>{fmt((totals[sorted.at(-1)?.[0]] ?? 0) - totals[cheapest])}</b> ({savingsPct}%)
-                in your pocket vs {chainMeta[sorted.at(-1)?.[0]]?.name}.
+                🛒 Same basket, both stores: order from <b>{chainMeta[cheapest]?.name}</b> and keep{" "}
+                <b>{fmt(totals[sorted.at(-1)?.[0]] - totals[cheapest])}</b> ({savingsPct}%)
+                vs {chainMeta[sorted.at(-1)?.[0]]?.name}.
               </div>
             )}
+            {!result?.comparable && result?.item_deal && (
+              <div className="save-banner">
+                🎯 Best swap in your basket: <b>{result.item_deal.item}</b> costs{" "}
+                <b>{fmt(result.item_deal.low_price)}</b> at{" "}
+                <b style={{ color: chainMeta[result.item_deal.buy_at.slug]?.accent }}>
+                  {chainMeta[result.item_deal.buy_at.slug]?.name}
+                </b>{" "}
+                vs {fmt(result.item_deal.high_price)} at{" "}
+                {chainMeta[result.item_deal.avoid.slug]?.name} ({result.item_deal.gap_pct}% less).
+              </div>
+            )}
+            {result?.note && <div className="save-banner" style={{ background: "var(--panel-2)" }}>ℹ️ {result.note}</div>}
           </div>
         </>
       )}

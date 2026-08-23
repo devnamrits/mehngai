@@ -227,6 +227,8 @@ def to_observations(rows: list[dict], chain: str, collected_at=None) -> list[New
         price = _extract_price(row)
         pack_size = _first(row, "pack_size", "pack_size_label", "weight")
         unit = compute_unit_price(price, str(pack_size) if pack_size else None, raw_name)
+        if price is None and unit.value is None:
+            continue
         observations.append(
             NewObservation(
                 chain=chain,

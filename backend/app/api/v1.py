@@ -56,6 +56,7 @@ def health(db=Depends(get_db)):
 FRESH_WINDOW_HOURS = 36
 
 
+
 def _fresh_cutoff():
     return datetime.now(timezone.utc) - timedelta(hours=FRESH_WINDOW_HOURS)
 
@@ -191,14 +192,52 @@ def basket(payload: dict, db=Depends(get_db)):
     found_items = [e for e in resolved if e.get("found")]
     full_coverage_chains = [c for c in totals if found_items and covered[c] == len(found_items)]
 
-    cheapest = min(full_coverage_chains or totals, key=totals.get) if totals else None
-    priciest = max(totals, key=totals.get) if totals else None
+    comparable = full_coverage_chains if len(full_coverage_chains) >= 2 else []
+    cheapest = min(comparable, key=totals.get) if comparable else None
+    priciest = max(comparable, key=totals.get) if comparable else None
+
+    note = None
+    if not totals:
+        note = "None of these items are on today's scanned shelves — try different staples."
+    elif not comparable:
+        solo = next(iter(totals))
+        note = (
+            f"Only {_chain_meta_map().get(solo, {}).get('name', solo)} stocks all of these items "
+            "today — add another everyday staple to unlock a store-vs-store comparison."
+        )
+
+    item_deal = None
+    for entry in resolved:
+        if not entry.get("found"):
+            continue
+        prices = {c: v["price"] for c, v in entry["prices"].items() if v["price"]}
+        if len(prices) < 2:
+            continue
+        lo_c = min(prices, key=prices.get)
+        hi_c = max(prices, key=prices.get)
+        gap = round((prices[hi_c] - prices[lo_c]) / prices[hi_c] * 100, 1)
+        if gap >= 5 and (item_deal is None or gap > item_deal["gap_pct"]):
+            meta_map = _chain_meta_map()
+            item_deal = {
+                "item": entry["item"],
+                "buy_at": {"slug": lo_c, **meta_map.get(lo_c, {})},
+                "avoid": {"slug": hi_c, **meta_map.get(hi_c, {})},
+                "low_price": prices[lo_c],
+                "high_price": prices[hi_c],
+                "gap_pct": gap,
+            }
+
     return {
         "items": resolved,
         "totals": totals,
+        "item_deal": item_deal,
+        "coverage": covered,
+        "comparable": bool(comparable),
         "cheapest_chain": cheapest,
         "priciest_chain": priciest,
-        "savings": round((totals[priciest] - totals[cheapest]) * (100 / totals[priciest]), 1) if cheapest and priciest and totals[priciest] else 0,
+        "savings": round((totals[priciest] - totals[cheapest]) * (100 / totals[priciest]), 1)
+        if comparable and totals[priciest] else 0,
+        "note": note,
         "monthly_note": "estimates use today's shelf prices × your quantity",
         "chains": _chain_meta_map(),
     }
