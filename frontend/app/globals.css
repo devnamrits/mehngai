@@ -270,3 +270,27 @@ table.matrix { table-layout: fixed; width: 100%; border-collapse: collapse; }
 .infl-sub { color: var(--muted); font-size: 13px; margin-top: 6px; }
 .daybar { display: flex; gap: 6px; margin-top: 12px; }
 .daybar i { height: 6px; flex: 1; border-radius: 3px; background: var(--line); }
+
+/* ---------- mehngai hero ---------- */
+.mega {
+  font-family: var(--serif); font-weight: 300;
+  font-size: clamp(90px, 16vw, 190px); line-height: .9; letter-spacing: -0.03em;
+}
+.mega span { font-size: .35em; }
+.mega-muted { color: var(--muted); }
+.mega-muted span { color: var(--saffron); }
+.hero-sub { max-width: 640px; margin: 18px auto 0; color: var(--muted); font-size: 15.5px; }
+.daybar.center { justify-content: center; max-width: 320px; margin-top: 26px; }
+
+/* ---------- ticker ---------- */
+.ticker {
+  overflow: hidden; border-block: 1px solid var(--line);
+  margin-top: 30px; padding: 10px 0; background: var(--panel);
+}
+.ticker-track {
+  display: inline-flex; gap: 42px; white-space: nowrap;
+  animation: scrollx 38s linear infinite;
+}
+.tick-item { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+.tick-item b { margin-left: 8px; font-weight: 600; }
+@keyframes scrollx { from { transform: translateX(0); } to { transform: translateX(-50%); } }
