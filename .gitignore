@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+*.db
+.env
+nohup.out
+node_modules/
+.next/
+.DS_Store
+.idea
