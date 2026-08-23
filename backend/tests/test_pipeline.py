@@ -60,7 +60,7 @@ class TestOrchestratorAndIndex:
 
         summary = orchestrator.run_nightly()
         assert len(summary["runs"]) == 1
-        assert summary["healed"] == ["chain-A"]
+        assert summary["healed"] == ["chain-a"]
         assert len(fake_scraper.heals) == 1
 
     def test_index_chains_from_base_100(self, db_session):

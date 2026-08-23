@@ -26,7 +26,7 @@ class OrchestratorService:
 
     @property
     def contracts(self) -> list[CollectorContract]:
-        labels = ["A", "B", "C", "D", "E"]
+        labels = ["a", "b", "c", "d", "e"]
         return [
             CollectorContract(
                 collector_id=collector_id,

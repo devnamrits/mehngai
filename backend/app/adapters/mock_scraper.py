@@ -30,9 +30,9 @@ _CATALOG = [
 ]
 
 _CHAIN_PROFILES = {
-    "mock-chain-a": {"label": "chain-A", "bias": 1.00},
-    "mock-chain-b": {"label": "chain-B", "bias": 0.94},
-    "mock-chain-c": {"label": "chain-C", "bias": 1.07},
+    "mock-chain-a": {"label": "chain-a", "bias": 1.00},
+    "mock-chain-b": {"label": "chain-b", "bias": 0.94},
+    "mock-chain-c": {"label": "chain-c", "bias": 1.07},
 }
 
 
