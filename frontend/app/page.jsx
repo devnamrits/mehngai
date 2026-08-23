@@ -43,7 +43,7 @@ function Hero({ stats }) {
 
 const CHIP_TERMS = ["milk", "paneer", "rice", "oil", "tea", "biscuit", "egg", "tomato"];
 
-function BasketBuilder({ chainMeta }) {
+function BasketBuilder({ chainMeta, onChains }) {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -66,7 +66,7 @@ function BasketBuilder({ chainMeta }) {
     })();
   }, []);
 
-  const payload = useMemo(() => ({ items: basket.map((b) => ({ q: b.q, qty: b.qty })) }), [basket]);
+  const payload = useMemo(() => ({ items: basket.map((b) => ({ q: b.item, qty: b.qty })) }), [basket]);
 
   useEffect(() => {
     clearTimeout(timer.current);
@@ -76,6 +76,7 @@ function BasketBuilder({ chainMeta }) {
       try {
         const d = await api.prices(query.trim());
         setSuggestions((d.results ?? []).slice(0, 6));
+        onChains?.(d);
       } catch {}
       setSearching(false);
     }, 220);
@@ -85,7 +86,7 @@ function BasketBuilder({ chainMeta }) {
   useEffect(() => {
     if (basket.length === 0) { setResult(null); return; }
     const t = setTimeout(async () => {
-      try { setResult(await api.basketCompare(payload)); } catch {}
+      try { const r = await api.basketCompare(payload); setResult(r); onChains?.(r); } catch {}
     }, 200);
     return () => clearTimeout(t);
   }, [payload]);
@@ -222,10 +223,10 @@ function BasketBuilder({ chainMeta }) {
   );
 }
 
-function Deals({ chainMeta, onDeals }) {
+function Deals({ chainMeta, onDeals, onChains }) {
   const [deals, setDeals] = useState(null);
 
-  useEffect(() => { api.deals().then((d) => { setDeals(d.deals ?? []); onDeals?.(d.deals ?? []); }).catch(() => {}); }, []);
+  useEffect(() => { api.deals().then((d) => { setDeals(d.deals ?? []); onDeals?.(d.deals ?? []); onChains?.(d); }).catch(() => {}); }, []);
 
   return (
     <section>
@@ -350,12 +351,13 @@ export default function Page() {
   const [series, setSeries] = useState([]);
   const [stats, setStats] = useState({});
   const [deals, setDeals] = useState([]);
+  const mergeChains = (d) => { if (d?.chains) setChainMeta((prev) => ({ ...prev, ...d.chains })); };
   const [chainMeta, setChainMeta] = useState({});
   const [pulseEvents, setPulseEvents] = useState([]);
   const [live, setLive] = useState(false);
 
   useEffect(() => {
-    api.stats().then((d) => { setStats(d); setChainMeta(d.chains ?? {}); }).catch(() => {});
+    api.stats().then((d) => { setStats(d); mergeChains(d); }).catch(() => {});
     api.pulseRecent().then((d) => setPulseEvents(d.events ?? [])).catch(() => {});
   }, []);
 
@@ -370,9 +372,9 @@ export default function Page() {
       <Hero stats={stats} />
       <div className="layout">
         <main>
-          <BasketBuilder chainMeta={chainMeta} />
+          <BasketBuilder chainMeta={chainMeta} onChains={mergeChains} />
           <ShelfSnapshot stats={stats} chainMeta={chainMeta} deals={deals} />
-          <Deals chainMeta={chainMeta} onDeals={setDeals} />
+          <Deals chainMeta={chainMeta} onDeals={setDeals} onChains={mergeChains} />
         </main>
         <aside>
           <HowItWorks />
