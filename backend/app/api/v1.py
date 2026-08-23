@@ -69,6 +69,23 @@ def backfill_groups(db=Depends(get_db)):
     return {"items_grouped": len(rows), "distinct_groups": groups}
 
 
+@router.get("/admin/db-info", dependencies=[Depends(require_pipeline_token)])
+def db_info():
+    from app.core.db import engine
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        rows = conn.execute(text("PRAGMA database_list")).all()
+    return {"url": str(engine.url), "databases": [list(r) for r in rows]}
+
+
+@router.post("/admin/ingest-commodities", dependencies=[Depends(require_pipeline_token)])
+def ingest_commodities():
+    """Server-side ingestion of gold/fuel history — single-writer guarantee."""
+    from scripts.backfill_commodities import run_ingest
+    stats = run_ingest()
+    return stats
+
+
 @router.get("/health")
 def health(db=Depends(get_db)):
     db.execute(select(1))
@@ -343,13 +360,15 @@ def inflation(db=Depends(get_db)):
 
 def _median_unit_by_item(db, day):
     rows = db.execute(
-        text("""SELECT o.canonical_id, o.unit_price FROM observations o
-                WHERE date(o.collected_at)=:d AND o.unit_price IS NOT NULL AND o.unit_price>0"""),
+        text("""SELECT o.canonical_id,
+                       COALESCE(NULLIF(o.unit_price,0), o.price) AS effective
+                FROM observations o
+                WHERE date(o.collected_at)=:d AND o.price IS NOT NULL AND o.price>0"""),
         {"d": day},
     ).all()
     by_item: dict = {}
-    for cid, up in rows:
-        by_item.setdefault(cid, []).append(up)
+    for cid, eff in rows:
+        by_item.setdefault(cid, []).append(eff)
     out = {}
     for cid, vals in by_item.items():
         vals.sort()
