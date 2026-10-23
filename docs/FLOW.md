@@ -141,7 +141,7 @@ sequenceDiagram
             alt heal attempted for this collector in last 30 min
                 ORC->>PB: warn "heal skipped (cooldown)"
             else heal dispatched
-                ORC->>BD: heal(HealRequest, auto_approve = graduated?)
+                ORC->>BD: heal(HealRequest(auto_approve = graduated))
                 BD->>BD: POST /dca/collectors/{id}/refactor_template
                 loop poll progress, 15s interval, 25 min cap
                     BD->>BD: GET /refactor_template/progress
@@ -172,7 +172,7 @@ sequenceDiagram
         ORC->>PB: info ingest "stored N rows"
     end
 
-    ORC->>IX: compute_for_day(today, UTC)
+    ORC->>IX: compute_for_day(day)
     IX->>DB: read the day's observations
     IX->>DB: upsert index_points per chain + blend
     ORC->>PB: info pipeline "nightly complete"
