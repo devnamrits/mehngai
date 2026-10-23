@@ -3,6 +3,7 @@
 > Live cost-of-living index powered by Bright Data Scraper Studio self-healing collectors.
 > Stack: **FastAPI** (Render) · **Next.js** (Vercel) · **Neon Postgres** · **GitHub Actions** cron · **Telegram**
 > Editable diagram source: [`docs/architecture.drawio`](./architecture.drawio)
+> Code-level flow, function by function: [`docs/FLOW.md`](./FLOW.md) — this HLD is the design-time view; FLOW.md records the shipped implementation and where it diverged.
 
 ## 1. System context
 
@@ -28,7 +29,7 @@ Mehngai answers one question daily: *what do everyday goods actually cost, and h
 | Index engine | Core service | Unit normalization (₹/kg·L), canonical items, chained Laspeyres |
 | Pulse bus | In-process | Pub/sub → SSE clients; durable copy in `pulse_events` |
 | Alert channel | Telegram adapter | Watchlist threshold alerts post-ingest |
-| Scheduler | GitHub Actions | Nightly `POST /pipeline/run` with bearer token |
+| Scheduler | GitHub Actions | Weekly `POST /pipeline/run` with bearer token |
 
 ## 3. Deployment topology
 
@@ -66,7 +67,7 @@ flowchart TB
 
 Render sleeps when idle; the cron hit doubles as wake-up. Neon cold starts (~500ms) absorbed by retry logic.
 
-## 4. Nightly pipeline sequence
+## 4. Pipeline sequence
 
 ```mermaid
 sequenceDiagram
@@ -152,7 +153,7 @@ Secrets only as env vars (Render/Vercel dashboards); `.env.example` documents sh
 
 ```
 mehngai/
-├── docs/ (HLD.md, architecture.drawio)
+├── docs/ (HLD.md, FLOW.md, PRODUCT.md, architecture.drawio)
 ├── backend/
 │   ├── app/{core,domain,ports,adapters,services,api}/
 │   ├── tests/

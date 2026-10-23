@@ -24,7 +24,7 @@ Real responses captured from the running system: [`examples/`](examples)
 
 ## Architecture
 
-Editable HLD: [`docs/HLD.md`](docs/HLD.md) · TS reference prototype: [`prototype/`](prototype)
+Editable HLD: [`docs/HLD.md`](docs/HLD.md) · Code-level flow (every step mapped to a function): [`docs/FLOW.md`](docs/FLOW.md) · TS reference prototype: [`prototype/`](prototype)
 
 ```mermaid
 flowchart LR
@@ -98,7 +98,7 @@ curl "localhost:8000/api/v1/prices?q=milk"             # cross-chain price grid
 curl localhost:8000/api/v1/movers?window_days=7        # wall of movers
 curl localhost:8000/api/v1/insights/daily              # AI briefing
 curl -X POST -H "Authorization: Bearer devtoken" \
-     localhost:8000/api/v1/pipeline/run                # nightly run (mock scraper)
+     localhost:8000/api/v1/pipeline/run                # pipeline run (mock scraper)
 
 # watch the self-healing loop live:
 MOCK_FAIL_COLLECTOR=mock-chain-b uvicorn app.main:app --port 8001
@@ -129,7 +129,7 @@ Scraper Studio is not an add-on here — **every data point in the product origi
 | `backend/` | Render free web service | `render.yaml` included; set env vars from `backend/.env.example` |
 | Database | Neon free Postgres | connection string goes in `DATABASE_URL`; survives restarts |
 | `frontend/` | Vercel free | Next.js; set `NEXT_PUBLIC_API_URL` to your Render URL |
-| Scheduler | GitHub Actions | `nightly.yml` cron POSTs `/pipeline/run`; set repo secrets `MEHNGAI_API_URL`, `PIPELINE_TOKEN` |
+| Scheduler | GitHub Actions | `weekly.yml` cron POSTs `/pipeline/run`; set repo secrets `MEHNGAI_API_URL`, `PIPELINE_TOKEN` |
 
 ## AI assistance disclosure
 
