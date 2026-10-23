@@ -81,8 +81,8 @@ flowchart LR
     HEAL --> SS
 ```
 
-The UI holds no state. Everything it renders is a read model computed at request
-time, except the pulse feed, which is pushed over SSE.
+The UI keeps no price state of its own. Everything it renders is a read model
+computed at request time, except the pulse feed, which is pushed over SSE.
 
 ---
 
@@ -368,12 +368,13 @@ just happened. A Render cold start followed immediately by a drift detection
 lands exactly in that window.
 
 **The incident is never closed by the pipeline.** `open_incident` runs before
-the cooldown check, and its returned id is discarded. `SqlRepository.
-resolve_incident` exists but has no caller. Every drift therefore leaves an open
-`incidents` row — including a cooldown-skipped run and a heal that succeeded.
-The three resolved incidents visible in the shipped database were inserted by
-`POST /admin/restore-history`, not by the watchdog. `/insights/daily` counts
-`resolved_at IS NULL` as `incidents_open`, so that number only grows.
+the cooldown check, and its returned id is discarded.
+`SqlRepository.resolve_incident` exists but has no caller. Every drift therefore
+leaves an open `incidents` row — including a cooldown-skipped run and a heal that
+succeeded. The three resolved incidents visible in the shipped database were
+inserted by `POST /admin/restore-history`, not by the watchdog.
+`/insights/daily` counts `resolved_at IS NULL` as `incidents_open`, so that
+number only grows.
 
 Heal prompts are generated, not hand-written per incident:
 
@@ -518,7 +519,7 @@ and pipeline endpoints.
 | `POST /pipeline/run` | Bearer | writes via orchestrator | `OrchestratorService` |
 | `POST /admin/*` | Bearer | maintenance | routes |
 
-Four of these deserve their exact rules, because they are easy to misread:
+Five of these deserve their exact rules, because they are easy to misread:
 
 **`/inflation`** does not read `index_points`. It takes the distinct scan days,
 uses the **first-ever** and latest, computes a median unit price per item on
@@ -765,8 +766,8 @@ These are real behaviours worth knowing before debugging a run:
 14. **`runs.heal_count` and `watchlist` are placeholders.** Neither has a writer
     in the shipped code; `watchlist` has no route at all.
 15. **`/index` assumes about eight scopes per day.** `series` slices the last
-    `days × 8` rows. With more chains or commodity scopes, the requested window
-    silently loses its oldest days.
+    `days × 8` rows. With more chains or commodity scopes it silently truncates
+    the requested window; with fewer it returns more days than asked.
 16. **A cold DMart run can look like a regression.** The JS-rendered collector
     occasionally returns zero rows from a fresh host. That is a genuine
     `empty_run` verdict, so the watchdog opens an incident and may dispatch a
