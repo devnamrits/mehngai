@@ -100,4 +100,4 @@ def run_ingest():
 
 
 if __name__ == "__main__":
-    main()
+    run_ingest()
